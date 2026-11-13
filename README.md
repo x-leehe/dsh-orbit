@@ -152,6 +152,9 @@ tools/                 图标生成、Lucide 数据抓取
 
 ## 鸣谢
 
+- **[DeepSeek-Balance-Whale-Widget](https://github.com/MeteorNOX/DeepSeek-Balance-Whale-Widget)**（MIT）—
+  **余额/用量展示的灵感来源**。它把 DeepSeek 余额做成住在 DSH 界面角落的一只小鲸鱼娘，随界面自动出现；
+  本项目借的是「把余额和今日消耗摆在显眼处」这个思路，界面与代码均为独立实现。
 - **[DSH / DeepSeek Harness](https://github.com/deepseek-ai)** — 本项目服务的对象；标志中心的鲸鱼取自
   `dsh-web-frontend/dist/favicon.svg`，登录 cookie 的签名方式参考了 `dsh-client-connection` 的实现。
 - **[Lucide](https://lucide.dev)**（ISC）— 全部界面图标。`tools/fetch-lucide.ps1` 从 `lucide-static` 抓官方 SVG，
