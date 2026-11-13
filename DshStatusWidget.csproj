@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>DSH-Orbit</AssemblyName>
+    <Product>DSH-Orbit</Product>
+    <AssemblyTitle>DSH-Orbit</AssemblyTitle>
+    <Company>DSH-Orbit</Company>
+    <RootNamespace>DshStatusWidget</RootNamespace>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <DebugType>none</DebugType>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3485.44" />
+  </ItemGroup>
+
+
+  <ItemGroup>
+    <!-- 搜索引擎品牌图标（lucide 没有品牌 logo，单独嵌入 favicon） -->
+    <EmbeddedResource Include="assets\engines\*.png" LogicalName="engines.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- tests/ 下是独立的冒烟测试工程，不编进挂件本体 -->
+    <Compile Remove="tests\**\*.cs" />
+    <Compile Remove="launcher\**\*.cs" />
+    <Compile Remove="tools\**\*.cs" />
+    <EmbeddedResource Remove="tests\**\*" />
+    <EmbeddedResource Remove="launcher\**\*" />
+    <EmbeddedResource Remove="tools\**\*" />
+    <None Remove="tests\**\*" />
+    <None Remove="launcher\**\*" />
+    <None Remove="tools\**\*" />
+  </ItemGroup>
+
+</Project>

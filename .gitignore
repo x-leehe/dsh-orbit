@@ -1,0 +1,11 @@
+# 构建产物
+bin/
+obj/
+dist/
+dist-lite/
+*.user
+*.suo
+.vs/
+
+# 本机生成
+*.log
