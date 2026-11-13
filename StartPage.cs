@@ -129,7 +129,8 @@ internal sealed class StartPage : Control
         Invalidate();
     }
 
-    public void Refresh() => Invalidate();
+    /// <summary>数据变了（引擎/记录/背景），重画一帧。</summary>
+    public void RefreshContent() => Invalidate();
 
     public void FocusSearch()
     {

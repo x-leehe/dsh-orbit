@@ -24,6 +24,11 @@
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <InvariantGlobalization>false</InvariantGlobalization>
     <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <!-- 可空引用警告当错误处理：WebView2 的 View/Core 生命周期很容易写出空的解引用 -->
+    <WarningsAsErrors>nullable</WarningsAsErrors>
+    <!-- WebView2 包一并带了 WPF 程序集，它会和 WindowsBase 版本冲突（我们只用 WinForms，不引用 WPF）。
+         这是包层面的提示，不是代码问题，降级为消息避免噪声。 -->
+    <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3277</MSBuildWarningsAsMessages>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 

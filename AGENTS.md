@@ -40,6 +40,18 @@ dotnet run --project tests/Render -c Release -- docs
   禁止手绘近似 Lucide 图标；品牌 logo（DSH 鲸鱼）来自 `DshMark.cs`。
 - 不要把 `bin/`、`obj/`、`dist/`、`dist-lite/` 提交进仓库。
 
+## 可空引用
+
+工程开启了 `<WarningsAsErrors>nullable</WarningsAsErrors>`：任何 CS86xx 可空警告都会直接编译失败，
+**不要用 `#pragma warning disable` 绕过**，按下面的方式处理：
+
+- `Tab.View` 是 `WebView2?`（新标签页还没创建 WebView2），访问内核一律走 `Tab.Core`（内部是 `View?.CoreWebView2`）；
+- 事件回调里不要假设 `CoreWebView2` 已经就绪，用 `?.` 或先判空；
+- 释放时用 `tab.View?.Dispose()`。
+
+`MSB3277`（WindowsBase 版本冲突）已在 csproj 里降级为消息：它来自 WebView2 包附带的 WPF 程序集，
+本项目只用 WinForms，不引用 WPF。
+
 ## 修改 WebView2 外壳时的注意点
 
 - 窗口是"原生边框 + `WM_NCCALCSIZE` 去掉标题栏"的结构：

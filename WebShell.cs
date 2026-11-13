@@ -102,7 +102,7 @@ internal sealed class WebShell : Form
         _addressHost.Paint += PaintAddressHost;
         _address.Dock = DockStyle.Fill;
 
-        _refresh = new HeaderButton("刷新", () => ActiveTab?.View.CoreWebView2?.Reload()) { Glyph = "refresh" };
+        _refresh = new HeaderButton("刷新", () => ActiveTab?.Core?.Reload()) { Glyph = "refresh" };
         _external = new HeaderButton("在浏览器打开", OpenExternal) { Glyph = "external" };
         _close = new TrafficButton(TrafficButton.Dot.Close, "关闭", HideOrClose);
         _minimize = new TrafficButton(TrafficButton.Dot.Minimize, "最小化", () => BeginInvoke(MinimizeWindow));
@@ -176,9 +176,9 @@ internal sealed class WebShell : Form
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public ShellCloseMode CloseMode { get; set; }
 
-    public string CurrentUrl => ActiveTab?.View.CoreWebView2?.Source ?? _address.Text;
+    public string CurrentUrl => ActiveTab?.Core?.Source ?? _address.Text;
 
-    public bool IsAlive => _active?.View.CoreWebView2 is not null;
+    public bool IsAlive => _active?.Core is not null;
 
     private Tab? ActiveTab => _active;
 
@@ -236,7 +236,7 @@ internal sealed class WebShell : Form
             _address.Text = uri.ToString();
         }
 
-        tab.View.CoreWebView2?.Navigate(uri.ToString());
+        tab.Core?.Navigate(uri.ToString());
         RecordHistory(uri.ToString(), tab.Title);
     }
 
@@ -444,7 +444,7 @@ internal sealed class WebShell : Form
         });
         _shellState.ActiveEngine = dialog.EngineName;
         ShellStore.Save(_shellState);
-        tab.Start?.Refresh();
+        tab.Start?.RefreshContent();
     }
 
     private void Activate(Tab tab)
@@ -492,7 +492,7 @@ internal sealed class WebShell : Form
             if (tab.View is not null)
             {
                 _webHost.Controls.Remove(tab.View);
-                tab.View.Dispose();
+                tab.View?.Dispose();
             }
 
             if (tab.Start is not null)
@@ -530,7 +530,7 @@ internal sealed class WebShell : Form
         }
 
         var tab = ActiveTab;
-        if (tab?.View.CoreWebView2 is null)
+        if (tab?.Core is null)
         {
             _ = CreateTabAsync(uri.ToString());
             return;
@@ -539,7 +539,7 @@ internal sealed class WebShell : Form
         EnsureSessionCookie(tab, uri.ToString());
         tab.Url = uri.ToString();
         _address.Text = uri.ToString();
-        tab.View.CoreWebView2.Navigate(uri.ToString());
+        tab.Core!.Navigate(uri.ToString());
     }
 
     // ---------------------------------------------------------------- 布局
@@ -862,7 +862,7 @@ internal sealed class WebShell : Form
     /// <summary>本机回环地址先用本地 secret 签一个会话 cookie，省掉「没有 token 就 401」。</summary>
     private static void EnsureSessionCookie(Tab tab, string url)
     {
-        var core = tab.View.CoreWebView2;
+        var core = tab.Core;
         if (core is null || !Uri.TryCreate(url, UriKind.Absolute, out var uri) || !uri.IsLoopback)
         {
             return;
@@ -954,7 +954,7 @@ internal sealed class WebShell : Form
         {
             try
             {
-                tab.View.Dispose();
+                tab.View?.Dispose();
             }
             catch
             {
@@ -1179,6 +1179,9 @@ internal sealed class WebShell : Form
     private sealed class Tab
     {
         public WebView2? View { get; set; }
+
+        /// <summary>View 可能还没创建（新标签页），这里统一做一次空检查。</summary>
+        public CoreWebView2? Core => View?.CoreWebView2;
         public StartPage? Start { get; set; }
         public string Url { get; set; } = "";
         public string Title { get; set; } = "新标签页";
