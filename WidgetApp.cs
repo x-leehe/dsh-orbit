@@ -817,6 +817,7 @@ internal sealed class WidgetApp : ApplicationContext
         var running = _online || _host.IsRunning;
         var state = new MenuState(
             Running: running,
+            Starting: _starting,
             HasUrl: _instance is not null || _host.AuthenticatedUrl is not null,
             LayoutBottom: _config.AlwaysBottom,
             LayoutTop: _config.AlwaysOnTop,

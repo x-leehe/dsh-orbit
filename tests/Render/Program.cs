@@ -83,7 +83,7 @@ internal static class Program
 
         if (args.Contains("--show-menu"))
         {
-            var liveState = new MenuState(true, true, false, true, false, true, true, true, AutoStartMode.FullAuto);
+            var liveState = new MenuState(true, false, true, false, true, false, true, true, true, AutoStartMode.FullAuto);
             using var live = new TrayMenuForm(liveState, _ => { });
             Cursor.Position = new Point(700, 500);
             live.ShowAtCursor();
@@ -107,6 +107,7 @@ internal static class Program
 
         var menuState = new MenuState(
             Running: true,
+            Starting: false,
             HasUrl: true,
             LayoutBottom: false,
             LayoutTop: true,
@@ -120,6 +121,26 @@ internal static class Program
             using var bitmap = menu.Snapshot();
             bitmap?.Save(Path.Combine(outputDir, "menu.png"), ImageFormat.Png);
             Console.WriteLine("saved menu.png");
+        }
+
+        // 停止态：第一格应该是「启动」且可点
+        var stoppedState = new MenuState(
+            Running: false,
+            Starting: false,
+            HasUrl: false,
+            LayoutBottom: true,
+            LayoutTop: false,
+            Locked: false,
+            EdgeHideEnabled: true,
+            Visible: true,
+            ShellHide: false,
+            AutoStart: AutoStartMode.Disabled);
+
+        using (var menu = new TrayMenuForm(stoppedState, _ => { }))
+        {
+            using var bitmap = menu.Snapshot();
+            bitmap?.Save(Path.Combine(outputDir, "menu-stopped.png"), ImageFormat.Png);
+            Console.WriteLine("saved menu-stopped.png");
         }
 
         form.Close();

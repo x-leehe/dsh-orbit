@@ -168,10 +168,13 @@ internal sealed class TrayMenuForm : Form
         const int gap = 6;
         var tileWidth = (CardWidth - (2 * Pad) - (2 * gap)) / 3;
         var y = Pad;
-        DrawAction(g, "open", "打开", Pad, y, tileWidth, AccentBlue, _state.HasUrl);
+        var primaryId = _state.Running ? "open" : "start";
+        var primaryLabel = _state.Running ? "打开" : (_state.Starting ? "启动中" : "启动");
+        var primaryEnabled = _state.Running ? _state.HasUrl : !_state.Starting;
+
+        DrawAction(g, primaryId, primaryLabel, Pad, y, tileWidth, AccentBlue, primaryEnabled);
         DrawAction(g, "stop", "停止", Pad + tileWidth + gap, y, tileWidth, AccentRed, _state.Running);
-        DrawAction(g, "restart", "重启", Pad + (2 * (tileWidth + gap)), y, tileWidth, AccentGreen,
-            _state.Running || _state.HasUrl);
+        DrawAction(g, "restart", "重启", Pad + (2 * (tileWidth + gap)), y, tileWidth, AccentGreen, _state.Running);
 
         // ---- 层级分段 ----
         var segmentY = Pad + ActionHeight + 8;
@@ -232,6 +235,7 @@ internal sealed class TrayMenuForm : Form
         var iconName = id switch
         {
             "open" => "external",
+            "start" => "play",
             "stop" => "square",
             "restart" => "refresh",
             _ => "square",
@@ -423,6 +427,7 @@ internal sealed class TrayMenuForm : Form
 /// <summary>弹出菜单时挂件的当前状态。</summary>
 internal sealed record MenuState(
     bool Running,
+    bool Starting,
     bool HasUrl,
     bool LayoutBottom,
     bool LayoutTop,

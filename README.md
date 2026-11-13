@@ -35,9 +35,9 @@
 
 <img src="docs/preview-running.png" width="420"/>
 
-**托盘菜单**：
+**托盘菜单**（运行中第一格是「打开」；停止时会换成可点的「启动」）：
 
-<img src="docs/menu.png" width="240"/>
+<a><img src="docs/menu.png" width="240"/></a> <img src="docs/menu-stopped.png" width="240"/>
 
 ## 功能
 
