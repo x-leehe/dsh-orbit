@@ -3,7 +3,7 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
-namespace DshStatusWidget;
+namespace DshOrbit;
 
 /// <summary>DeepSeek 余额 + 按余额下降累计的“今日已用”。</summary>
 internal sealed class BalanceService : IDisposable

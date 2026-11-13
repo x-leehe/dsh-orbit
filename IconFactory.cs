@@ -3,7 +3,7 @@ using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
-namespace DshStatusWidget;
+namespace DshOrbit;
 
 /// <summary>用代码画一个托盘图标：深色圆角方块 + 状态点。</summary>
 internal static class IconFactory

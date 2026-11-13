@@ -1,7 +1,7 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
 
-namespace DshStatusWidget;
+namespace DshOrbit;
 
 /// <summary>
 /// DSH-Orbit 的标志：三段圆弧组成的光圈（aperture / 轨道），中心是 DSH 的鲸鱼标。

@@ -4,7 +4,7 @@ using System.Drawing.Imaging;
 using System.Drawing.Text;
 using System.Windows.Forms;
 
-namespace DshStatusWidget;
+namespace DshOrbit;
 
 /// <summary>托盘右键菜单：自绘卡片式弹层，和挂件同一套设计语言。</summary>
 internal sealed class TrayMenuForm : Form

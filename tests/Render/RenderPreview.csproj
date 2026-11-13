@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-    <RootNamespace>DshStatusWidget</RootNamespace>
+    <RootNamespace>DshOrbit</RootNamespace>
     <AssemblyName>RenderPreview</AssemblyName>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -30,6 +30,12 @@
     <Compile Include="..\..\SvgPath.cs" />
     <Compile Include="..\..\Icons.cs" />
     <Compile Include="..\..\DshSession.cs" />
+    <Compile Include="..\..\ShellStore.cs" />
+    <Compile Include="..\..\StartPage.cs" />
+    <Compile Include="..\..\AddEngineDialog.cs" />
+    <Compile Include="..\..\LoopbackAuthServer.cs" />
+    <Compile Include="..\..\OrbitMark.cs" />
+    <Compile Include="..\..\DshMark.cs" />
   </ItemGroup>
 
 </Project>

@@ -1,6 +1,6 @@
 using System.IO.Pipes;
 
-namespace DshStatusWidget;
+namespace DshOrbit;
 
 /// <summary>
 /// 单实例之间的命令行通道：`DshStatus --show-window` 通过命名管道通知已运行的挂件开窗口。

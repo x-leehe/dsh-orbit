@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Windows.Forms;
 
-namespace DshStatusWidget;
+namespace DshOrbit;
 
 /// <summary>挂件应用：托盘、定时刷新、进程/余额/插件/外壳的协调者。</summary>
 internal sealed class WidgetApp : ApplicationContext

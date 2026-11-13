@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
-namespace DshStatusWidget;
+namespace DshOrbit;
 
 /// <summary>
 /// 给 WebView2 外壳签发 dsh 的会话 cookie。

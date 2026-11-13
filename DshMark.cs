@@ -3,7 +3,7 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
 
-namespace DshStatusWidget;
+namespace DshOrbit;
 
 internal static class DshMark
 {

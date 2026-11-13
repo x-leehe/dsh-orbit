@@ -4,7 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
-namespace DshStatusWidget;
+namespace DshOrbit;
 
 /// <summary>发现到的一个 dsh web 实例（监听端口的真实拥有者是内部 node 进程）。</summary>
 internal sealed record DshInstance(int Port, int ListenerPid, DateTime StartedAt);

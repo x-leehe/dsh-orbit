@@ -2,7 +2,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Windows.Forms;
 
-namespace DshStatusWidget;
+namespace DshOrbit;
 
 /// <summary>用真实的 WidgetForm 绘制逻辑离屏渲染两种状态，产出文档截图。</summary>
 internal static class Program

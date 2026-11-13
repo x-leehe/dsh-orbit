@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Net.Http;
 
-namespace DshStatusWidget;
+namespace DshOrbit;
 
 /// <summary>无界面冒烟测试：拉起 dsh → 抓 token URL → 停止，验证挂件的启动链路。</summary>
 internal static class Program

@@ -1,6 +1,6 @@
 using System.Windows.Forms;
 
-namespace DshStatusWidget;
+namespace DshOrbit;
 
 internal static class Program
 {

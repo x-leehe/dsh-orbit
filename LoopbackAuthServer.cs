@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 
-namespace DshStatusWidget;
+namespace DshOrbit;
 
 /// <summary>
 /// 本地登录中转：浏览器访问 <c>http://127.0.0.1:端口/open?to=&lt;dsh 地址&gt;</c> 时，

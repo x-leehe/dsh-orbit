@@ -6,7 +6,7 @@ using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
-namespace DshStatusWidget;
+namespace DshOrbit;
 
 /// <summary>
 /// Web 外壳：用 WebView2 内嵌 DSH Web UI，带简单的多标签页。

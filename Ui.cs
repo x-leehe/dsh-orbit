@@ -2,7 +2,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
 
-namespace DshStatusWidget;
+namespace DshOrbit;
 
 /// <summary>两个窗口共用的绘制小工具。</summary>
 internal static class Ui

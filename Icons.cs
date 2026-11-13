@@ -2,7 +2,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Globalization;
 
-namespace DshStatusWidget;
+namespace DshOrbit;
 
 /// <summary>
 /// 图标绘制：几何来自 lucide-static 官方 SVG（见 <see cref="LucideData"/>），

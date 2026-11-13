@@ -1,7 +1,7 @@
 using System.Drawing;
 using System.Windows.Forms;
 
-namespace DshStatusWidget;
+namespace DshOrbit;
 
 /// <summary>「添加搜索引擎」小对话框：深色、和外壳同一套配色。</summary>
 internal sealed class AddEngineDialog : Form

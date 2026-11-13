@@ -2,7 +2,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 
-namespace DshStatusWidget;
+namespace DshOrbit;
 
 /// <summary>把一张 ARGB 位图以逐像素透明的方式推到窗口上（UpdateLayeredWindow）。</summary>
 internal sealed class LayeredSurface : IDisposable

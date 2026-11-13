@@ -2,7 +2,7 @@
 // 由 tools/fetch-lucide.ps1 生成：lucide-static（ISC License）官方 SVG 的几何数据。
 // 不要手改，改脚本后重跑。
 // </auto-generated>
-namespace DshStatusWidget;
+namespace DshOrbit;
 
 internal static partial class LucideData
 {

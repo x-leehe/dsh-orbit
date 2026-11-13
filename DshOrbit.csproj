@@ -11,7 +11,7 @@
     <Product>DSH-Orbit</Product>
     <AssemblyTitle>DSH-Orbit</AssemblyTitle>
     <Company>DSH-Orbit</Company>
-    <RootNamespace>DshStatusWidget</RootNamespace>
+    <RootNamespace>DshOrbit</RootNamespace>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>app.ico</ApplicationIcon>

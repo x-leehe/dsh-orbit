@@ -2,7 +2,7 @@ using System.Drawing;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace DshStatusWidget;
+namespace DshOrbit;
 
 internal enum DshState
 {
@@ -50,7 +50,7 @@ internal sealed class StatusSnapshot
     };
 }
 
-/// <summary>挂件配置，保存在 %LOCALAPPDATA%\DshStatusWidget\config.json。</summary>
+/// <summary>挂件配置，保存在 %LOCALAPPDATA%\DSH-Orbit\config.json。</summary>
 internal sealed class WidgetConfig
 {
     public int X { get; set; } = -1;

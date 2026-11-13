@@ -29,5 +29,5 @@ public static class DshMeasure {
   }
 }
 "@
-$p = Get-Process DshStatusWidget -ErrorAction SilentlyContinue | Select-Object -First 1
+$p = Get-Process DSH-Orbit -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($p) { Write-Host "pid=$($p.Id)  " ; Write-Host ([DshMeasure]::Find([uint32]$p.Id)) } else { Write-Host 'not running' }

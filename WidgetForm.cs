@@ -5,7 +5,7 @@ using System.Drawing.Text;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
-namespace DshStatusWidget;
+namespace DshOrbit;
 
 /// <summary>桌面挂件本体：不透明圆角卡片，逐像素透明窗口，锁定穿透时在光标处开「探照灯」。</summary>
 internal sealed class WidgetForm : Form
@@ -1081,7 +1081,7 @@ internal sealed class WidgetForm : Form
             ("运行时长", _status.Uptime is { } up ? FormatUptime(up) : "—", Color.FromArgb(232, 238, 246)),
             ("余额", _status.Balance is { } b ? $"¥{b:0.00}" : "—",
                 _status.Balance is not null ? Color.FromArgb(63, 208, 138) : Color.FromArgb(120, 132, 152)),
-            ("今日已用", _status.SpentToday is { } s && s > 0 ? $"-¥{s:0.0000}" : "¥0.0000",
+            ("今日已用", _status.SpentToday is { } s && s > 0 ? $"¥{s:0.0000}" : "¥0.0000",
                 Color.FromArgb(188, 197, 212)),
         };
 

@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace DshStatusWidget;
+namespace DshOrbit;
 
 /// <summary>Win32 互操作：窗口样式、Z 序、圆角、监听端口枚举。</summary>
 internal static class Native

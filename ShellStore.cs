@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace DshStatusWidget;
+namespace DshOrbit;
 
 /// <summary>一个搜索引擎：URL 模板里的 {q} 会被替换成关键词。</summary>
 internal sealed class SearchEngine
@@ -46,7 +46,7 @@ internal sealed class ShellState
     }
 }
 
-/// <summary>读写 <c>%LOCALAPPDATA%\DshStatusWidget\shell.json</c>。</summary>
+/// <summary>读写 <c>%LOCALAPPDATA%\DSH-Orbit\shell.json</c>。</summary>
 internal static class ShellStore
 {
     private static readonly JsonSerializerOptions Options = new()

@@ -3,7 +3,7 @@ using System.Drawing.Drawing2D;
 using System.Globalization;
 using System.Text;
 
-namespace DshStatusWidget;
+namespace DshOrbit;
 
 /// <summary>
 /// 极简 SVG path 解析器：把 <c>d</c> 属性转成 GDI+ 路径（24×24 视口坐标）。

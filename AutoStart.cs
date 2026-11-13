@@ -1,6 +1,6 @@
 using Microsoft.Win32;
 
-namespace DshStatusWidget;
+namespace DshOrbit;
 
 /// <summary>
 /// 开机自启：写 HKCU 的 Run 键。
@@ -14,7 +14,7 @@ internal static class AutoStart
     private const string FullAutoArgument = "--autostart-full";
 
     public static string ExecutablePath =>
-        Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "DshStatusWidget.exe");
+        Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "DSH-Orbit.exe");
 
     public static AutoStartMode GetMode()
     {

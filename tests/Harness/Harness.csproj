@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-    <RootNamespace>DshStatusWidget</RootNamespace>
+    <RootNamespace>DshOrbit</RootNamespace>
     <AssemblyName>Harness</AssemblyName>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <InvariantGlobalization>false</InvariantGlobalization>
