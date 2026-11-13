@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/logo.png" width="360" alt="DSH-Orbit"/>
+<img src="docs/logo.svg" width="120" alt="DSH-Orbit"/>
 
 # DSH-Orbit
 
