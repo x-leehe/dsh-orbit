@@ -596,6 +596,21 @@ internal static class Fluent
             (int)Math.Round(a.B + ((b.B - a.B) * t)));
     }
 
+    /// <summary>
+    /// 把带 alpha 的前景色合成到不透明底色上，得到**不透明**结果。
+    /// 控件的 BackColor 不接受半透明色（WinForms 会抛 "does not support transparent background colors"），
+    /// 需要叠加效果时用这个，而不是 <see cref="Mix"/>（Mix 会连 alpha 一起插值）。
+    /// </summary>
+    public static Color Over(Color under, Color over)
+    {
+        var a = over.A / 255f;
+        return Color.FromArgb(
+            255,
+            (int)Math.Round(under.R + ((over.R - under.R) * a)),
+            (int)Math.Round(under.G + ((over.G - under.G) * a)),
+            (int)Math.Round(under.B + ((over.B - under.B) * a)));
+    }
+
     public static Color WithAlpha(Color color, float alpha) =>
         Color.FromArgb(Math.Clamp((int)Math.Round(alpha * 255), 0, 255), color.R, color.G, color.B);
 

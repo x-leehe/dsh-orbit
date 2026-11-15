@@ -49,6 +49,7 @@ internal sealed class WidgetForm : Form
     private DockSide _dockSide = DockSide.None;
     private bool _dockedHidden;
     private int _awayTicks;
+    private long _dockHoldUntil;
     private bool _animating;
     private int _animFrom;
     private int _animTo;
@@ -382,6 +383,13 @@ internal sealed class WidgetForm : Form
             return;
         }
 
+        // 刚从托盘唤出：给几秒钟「停留期」，别马上又缩回去。
+        if (Environment.TickCount64 < _dockHoldUntil)
+        {
+            _awayTicks = 0;
+            return;
+        }
+
         var screen = Screen.FromControl(this);
         if (_dockedHidden)
         {
@@ -404,6 +412,31 @@ internal sealed class WidgetForm : Form
         {
             _dockedHidden = true;
             StartAnimation(TargetLeft(screen, _dockSide, hidden: true));
+        }
+    }
+
+    /// <summary>
+    /// 从贴边隐藏状态滑出来，并在 <paramref name="holdMs"/> 内不自动收起（托盘单击用）。
+    /// </summary>
+    public void RevealFromDock(int holdMs)
+    {
+        _dockHoldUntil = Environment.TickCount64 + Math.Max(0, holdMs);
+
+        if (!IsHandleCreated || _dockSide == DockSide.None)
+        {
+            return;
+        }
+
+        var screen = Screen.FromControl(this);
+        _awayTicks = 0;
+        if (_dockedHidden)
+        {
+            _dockedHidden = false;
+            StartAnimation(TargetLeft(screen, _dockSide, hidden: false));
+        }
+        else
+        {
+            Left = TargetLeft(screen, _dockSide, hidden: false);
         }
     }
 

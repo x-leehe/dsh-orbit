@@ -1104,7 +1104,7 @@ internal sealed class WebShell : Form
         }
         else if (_addressHover)
         {
-            Fluent.Fill(g, new RectangleF(0, 0, width, height), Fluent.Mix(Fluent.Mica, Fluent.HoverLayer, 0.5f));
+            Fluent.Fill(g, new RectangleF(0, 0, width, height), Fluent.Over(Fluent.Mica, Fluent.HoverLayer));
         }
 
         // 收起/展开过程中，内容跟着高度淡入淡出；纯几何收缩看起来会像匀速平移。
@@ -1494,7 +1494,7 @@ internal sealed class WebShell : Form
     /// <summary>地址行是扁平的：默认和工具条同色，只有悬停/聚焦才提亮。</summary>
     private Color AddressFill => _addressEditing
         ? Fluent.ControlFill
-        : _addressHover ? Fluent.Mix(Fluent.Mica, Fluent.HoverLayer, 0.5f) : Fluent.Mica;
+        : _addressHover ? Fluent.Over(Fluent.Mica, Fluent.HoverLayer) : Fluent.Mica;
 
     /// <summary>把 Fluent 令牌应用到窗口与所有子控件，然后整窗重画。</summary>
     private void ApplyFluentChrome()

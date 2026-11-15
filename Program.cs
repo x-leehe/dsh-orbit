@@ -17,13 +17,15 @@ internal static class Program
         }
 
         var wantsShowWindow = HasFlag(args, "--show-window") || HasFlag(args, "--open-web");
+        var wantsReveal = HasFlag(args, "--reveal");
         var wantsFullAuto = HasFlag(args, "--autostart-full");
 
         using var mutex = new Mutex(true, @"Local\DSH-Orbit.SingleInstance", out var isFirstInstance);
         if (!isFirstInstance)
         {
             // 已经有挂件在跑：按参数通知它，自己直接退出（不再弹对话框）。
-            if (SingleInstance.TrySend(wantsShowWindow ? "show-window" : "show"))
+            var command = wantsShowWindow ? "show-window" : wantsReveal ? "reveal" : "show";
+            if (SingleInstance.TrySend(command))
             {
                 return;
             }

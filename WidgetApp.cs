@@ -84,14 +84,21 @@ internal sealed class WidgetApp : ApplicationContext
             Text = "DSH-Orbit",
             Icon = IconFactory.Create(Fluent.TextTertiary),
         };
-        _tray.DoubleClick += (_, _) => ShowWidget();
+        // 单击 = 显示挂件（贴边收起了就滑出来，停留 4 秒）；双击 = 打开 DSH Web；右键 = 菜单。
         _tray.MouseUp += (_, e) =>
         {
             if (e.Button == MouseButtons.Right)
             {
                 ShowTrayMenu();
+                return;
+            }
+
+            if (e.Button == MouseButtons.Left)
+            {
+                RevealWidgetFromTray();
             }
         };
+        _tray.DoubleClick += (_, _) => OpenWebUi();
 
         Fluent.Changed += OnThemeChanged;
 
@@ -575,6 +582,12 @@ internal sealed class WidgetApp : ApplicationContext
             return;
         }
 
+        if (string.Equals(command, "reveal", StringComparison.OrdinalIgnoreCase))
+        {
+            _ = BeginInvokeOnUi(RevealWidgetFromTray);
+            return;
+        }
+
         if (!string.Equals(command, "show-window", StringComparison.OrdinalIgnoreCase))
         {
             return;
@@ -762,6 +775,19 @@ internal sealed class WidgetApp : ApplicationContext
         _config.Visible = true;
         JsonIo.Save(AppPaths.ConfigFile, _config);
         _form.Show();
+        _form.Refresh();
+    }
+
+    /// <summary>托盘左键：显示挂件；如果贴着屏幕边缘且已收起，就滑出来并保持几秒。</summary>
+    private void RevealWidgetFromTray()
+    {
+        if (!_config.Visible)
+        {
+            ShowWidget();
+            return;
+        }
+
+        _form.RevealFromDock(holdMs: 4000);
         _form.Refresh();
     }
 
