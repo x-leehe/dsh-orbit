@@ -175,7 +175,9 @@ new Ripple().Begin(point) + Ripple.Draw(g, bounds, radius, tint)
   - **站点图标**：WebView2 `GetFaviconAsync`，32×32 缓存后画成 16×16；没有图标时用 `app-window`
   - **scheme 弱化**：`https://` 用 `TextTertiary`，其余用 `TextSecondary`，一眼能看出协议但不抢注意力
   - **加载状态**：刷新按钮位置画旋转弧（33ms 一帧），此时点它是「停止加载」；加载完恢复成 `refresh`
-- 收起按钮：`chevron-up` / `chevron-down`，收起时工具条高度 0、网页区域向上填满；状态存 `shell.json` 的 `AddressCollapsed`；`Ctrl+L` 会先展开再聚焦
+- 收起按钮：`chevron-up` / `chevron-down`，点击走 **12 帧（≈190ms）缓出高度动画**，网页区域跟着上下滑；
+  动画期间布局器让开（避免每帧被打回终态），结束后一次性重排 WebView2；状态存 `shell.json` 的 `AddressCollapsed`；
+  `Ctrl+L` 在收起态会瞬间展开再聚焦
 - 窗口：`DWMWA_USE_IMMERSIVE_DARK_MODE` 跟随主题，圆角走 DWM
 
 ### 4.4 新标签页

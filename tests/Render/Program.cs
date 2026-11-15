@@ -108,8 +108,10 @@ internal static class Program
 
         var collapsedField = type.GetField("_addressCollapsed", Flags)!;
 
+        var glyphProperty = collapse.GetType().GetProperty("Glyph")!;
+
         void Report(string label) => Console.WriteLine(
-            $"{label,-10} flag={collapsedField.GetValue(shell),-5} created={shell.IsHandleCreated,-5} " +
+            $"{label,-10} glyph={glyphProperty.GetValue(collapse),-12} flag={collapsedField.GetValue(shell),-5} created={shell.IsHandleCreated,-5} " +
             $"toolbarVisible={toolbar.Visible,-5} toolbar={toolbar.Bounds} hostTop={host.Top,-3} hostH={host.Height,-3} " +
             $"collapseX={collapse.Left} client={shell.ClientSize}");
 
@@ -120,11 +122,38 @@ internal static class Program
         void Click(Control target) => onMouseUp.Invoke(
             target, new object[] { new MouseEventArgs(MouseButtons.Left, 1, 5, 5, 0) });
 
+        // 折叠动画：点一下按钮后不泵消息，手动逐帧驱动定时器的 tick，观察中间态
+        var timer = (System.Windows.Forms.Timer)type.GetField("_addressTimer", Flags)!.GetValue(shell)!;
+        var tick = type.GetMethod("OnAddressAnimationTick", Flags)!;
+
+        var fromField = type.GetField("_addressAnimFrom", Flags)!;
+        var toField = type.GetField("_addressAnimTo", Flags)!;
+        var stepField = type.GetField("_addressAnimStep", Flags)!;
+
+        string Drive(string label)
+        {
+            timer.Stop();
+            var frames = new List<int>();
+            for (var i = 0; i < 13; i++)
+            {
+                var before = $"step={stepField.GetValue(shell)} from={fromField.GetValue(shell)} to={toField.GetValue(shell)}";
+                tick.Invoke(shell, null);
+                frames.Add(toolbar.Height);
+                if (i < 2)
+                {
+                    Console.WriteLine($"  {label}[{i}] {before} -> {toolbar.Height}");
+                }
+            }
+
+            return $"{label}: {string.Join(" → ", frames)}";
+        }
+
         Click(collapse);
-        layout.Invoke(shell, new object[] { 1280, 860 });
+        Console.WriteLine(Drive("collapse"));
         Report("collapsed");
+
         Click(collapse);
-        layout.Invoke(shell, new object[] { 1280, 860 });
+        Console.WriteLine(Drive("expand"));
         Report("expanded2");
         shell.Dispose();
     }

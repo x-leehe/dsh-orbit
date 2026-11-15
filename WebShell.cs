@@ -91,6 +91,11 @@ internal sealed class WebShell : Form
     private bool _loading;
     private float _spinAngle;
     private readonly System.Windows.Forms.Timer _spinTimer = new() { Interval = 33 };
+    private readonly System.Windows.Forms.Timer _addressTimer = new() { Interval = 16 };
+    private int _addressAnimFrom;
+    private int _addressAnimTo;
+    private int _addressAnimStep;
+    private bool _addressAnimating;
 
     public WebShell(string url, ShellCloseMode closeMode)
     {
@@ -154,6 +159,8 @@ internal sealed class WebShell : Form
         // 非编辑态由 PaintToolbar 自绘（要弱化 https:// 并画 favicon），编辑时才显示原生输入框。
         _address.Visible = false;
         _address.LostFocus += (_, _) => EndAddressEditing();
+
+        _addressTimer.Tick += (_, _) => OnAddressAnimationTick();
 
         _spinTimer.Tick += (_, _) =>
         {
@@ -686,12 +693,23 @@ internal sealed class WebShell : Form
             return;
         }
 
+        // 折叠动画自己逐帧控制高度，这里让开，否则每次改高度都会被重排打回终态。
+        if (_addressAnimating)
+        {
+            return;
+        }
+
         LayoutChildren(ClientSize.Width, ClientSize.Height);
     }
 
     /// <summary>按真实客户区重排；WM_NCCALCSIZE 之后 WinForms 缓存的 ClientSize 会是旧值，所以单独走 GetClientRect。</summary>
     private void ApplyBounds()
     {
+        if (_addressAnimating)
+        {
+            return;
+        }
+
         if (!IsHandleCreated || !GetClientRect(Handle, out var rect))
         {
             return;
@@ -1358,13 +1376,56 @@ internal sealed class WebShell : Form
     /// <summary>收起 / 展开地址栏；收起后网页区域向上多占一条工具条的高度。</summary>
     private void ToggleAddressBar()
     {
+        if (_addressAnimating)
+        {
+            // 动画中再点：直接落到目标态，避免来回抖
+            _addressAnimating = false;
+            _addressTimer.Stop();
+        }
+
         _addressCollapsed = !_addressCollapsed;
         _collapse.Glyph = _addressCollapsed ? "chevron-down" : "chevron-up";
         _shellState.AddressCollapsed = _addressCollapsed;
         ShellStore.Save(_shellState);
-        ApplyBounds();
-        _header.Invalidate();
+
+        if (ClientRectangle.Height <= 0)
+        {
+            ApplyBounds();
+            return;
+        }
+
+        _addressAnimFrom = _toolbar.Height;
+        _addressAnimTo = _addressCollapsed ? 0 : S(ToolbarHeight);
+        _addressAnimStep = 0;
+        _addressAnimating = true;
+        _toolbar.Visible = true;   // 收起过程中还要画出来
+        _addressTimer.Start();
+    }
+
+    /// <summary>工具条高度 36 ↔ 0 的滑动动画（12 帧 / ~190ms，缓出）。</summary>
+    private void OnAddressAnimationTick()
+    {
+        _addressAnimStep++;
+        var t = Math.Min(1f, _addressAnimStep / 12f);
+        var eased = 1f - MathF.Pow(1f - t, 3);
+        var height = (int)MathF.Round(_addressAnimFrom + ((_addressAnimTo - _addressAnimFrom) * eased));
+
+        var title = S(TitleBarHeight);
+        var client = ClientRectangle.Height;
+
+        _toolbar.Height = height;
         _toolbar.Invalidate();
+
+        // 内容整体跟着上下滑：这里只挪位置、不逐帧改 WebView2 尺寸（否则每帧都在重排页面）。
+        _webHost.Top = title + height;
+        _webHost.Height = Math.Max(0, client - title);
+
+        if (t >= 1f)
+        {
+            _addressAnimating = false;
+            _addressTimer.Stop();
+            ApplyBounds();   // 收尾：定稿高度 + 重新排 WebView2
+        }
     }
 
     /// <summary>聚焦地址栏；收起状态下先展开。</summary>
@@ -1372,7 +1433,14 @@ internal sealed class WebShell : Form
     {
         if (_addressCollapsed)
         {
-            ToggleAddressBar();
+            // 键盘聚焦时瞬间展开：动画期间布局会让开，输入框位置会错一帧。
+            _addressAnimating = false;
+            _addressTimer.Stop();
+            _addressCollapsed = false;
+            _collapse.Glyph = "chevron-up";
+            _shellState.AddressCollapsed = false;
+            ShellStore.Save(_shellState);
+            ApplyBounds();
         }
 
         _addressEditing = true;
@@ -1809,6 +1877,7 @@ internal sealed class WebShell : Form
         {
             Fluent.Changed -= OnFluentChanged;
             _spinTimer.Dispose();
+            _addressTimer.Dispose();
             _collapse?.Dispose();
             _minimize?.Dispose();
             _maximize?.Dispose();
@@ -2049,8 +2118,23 @@ internal sealed class WebShell : Form
             _toolTip.SetToolTip(this, tooltip);
         }
 
+        private string _glyph = "refresh";
+
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        public string Glyph { get; set; } = "refresh";
+        public string Glyph
+        {
+            get => _glyph;
+            set
+            {
+                if (string.Equals(_glyph, value, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                _glyph = value;
+                Invalidate();
+            }
+        }
 
         /// <summary>主题变了：底板颜色跟着标题栏走，然后重画。</summary>
         public void SyncTheme()
@@ -2090,7 +2174,7 @@ internal sealed class WebShell : Form
             Fluent.IconButton(
                 g,
                 new RectangleF(0, 0, Width, Height),
-                Glyph,
+                _glyph,
                 _hover ? VisualState.Hover : VisualState.Rest,
                 16f * (DeviceDpi / 96f),
                 _hover ? Fluent.TextPrimary : Fluent.TextSecondary);
