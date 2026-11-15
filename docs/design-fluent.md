@@ -168,9 +168,13 @@ new Ripple().Begin(point) + Ripple.Draw(g, bounds, radius, tint)
 - `+` 为 32×32 图标按钮，跟在最后一个标签后面（放不下时钉在标签区最右）
 - 红绿灯：**macOS 原色**（`TrafficMinimize #FEBC2E` / `TrafficMaximize #28C840` / `TrafficClose #FF5F57`，是设计系统里的显式例外，不跟主题变），
   纯圆点 Ø15、无背板；悬停时圆点提亮并浮出 × / − / + 符号；命中区仍 32×32
-- 地址行：**扁平行，没有外框、没有圆角、没有底板**——文字（12px 内边距）和两个 26×26 图标按钮直接坐在工具条上；
+- 地址行：**扁平行，没有外框、没有圆角、没有底板**——左侧 16×16 站点图标 + 地址文字（12px 内边距）+ 两个 26×26 图标按钮，直接坐在工具条上；
   悬停时整行提亮一档（`Mix(Mica, HoverLayer, 0.5)`），聚焦时换上 `ControlFill` 并在整行底部画 2px 强调线；
   整行都是可点击的编辑区，工具条与内容之间靠 1px `Divider` 分隔
+- 地址行内容（非编辑态自绘，编辑态换成原生输入框）：
+  - **站点图标**：WebView2 `GetFaviconAsync`，32×32 缓存后画成 16×16；没有图标时用 `app-window`
+  - **scheme 弱化**：`https://` 用 `TextTertiary`，其余用 `TextSecondary`，一眼能看出协议但不抢注意力
+  - **加载状态**：刷新按钮位置画旋转弧（33ms 一帧），此时点它是「停止加载」；加载完恢复成 `refresh`
 - 收起按钮：`chevron-up` / `chevron-down`，收起时工具条高度 0、网页区域向上填满；状态存 `shell.json` 的 `AddressCollapsed`；`Ctrl+L` 会先展开再聚焦
 - 窗口：`DWMWA_USE_IMMERSIVE_DARK_MODE` 跟随主题，圆角走 DWM
 

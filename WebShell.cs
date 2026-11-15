@@ -87,6 +87,10 @@ internal sealed class WebShell : Form
     private int _hoverClose = -1;
     private int _tabScroll;
     private bool _addressHover;
+    private bool _addressEditing;
+    private bool _loading;
+    private float _spinAngle;
+    private readonly System.Windows.Forms.Timer _spinTimer = new() { Interval = 33 };
 
     public WebShell(string url, ShellCloseMode closeMode)
     {
@@ -147,12 +151,30 @@ internal sealed class WebShell : Form
             // 地址框只在 Ctrl+L / 点击时拿焦点：窗口显示时不要抢焦点、也别把地址整段选中。
             TabStop = false,
         };
+        // 非编辑态由 PaintToolbar 自绘（要弱化 https:// 并画 favicon），编辑时才显示原生输入框。
+        _address.Visible = false;
+        _address.LostFocus += (_, _) => EndAddressEditing();
+
+        _spinTimer.Tick += (_, _) =>
+        {
+            _spinAngle = (_spinAngle + 30f) % 360f;
+            _toolbar.Invalidate();
+        };
+
         _address.KeyDown += (_, e) =>
         {
             if (e.KeyCode == Keys.Enter)
             {
                 e.SuppressKeyPress = true;
-                NavigateActive(_address.Text.Trim());
+                var target = _address.Text.Trim();
+                EndAddressEditing();
+                NavigateActive(target);
+            }
+            else if (e.KeyCode == Keys.Escape)
+            {
+                e.SuppressKeyPress = true;
+                EndAddressEditing();
+                _toolbar.Focus();
             }
         };
         _address.GotFocus += (_, _) => _toolbar.Invalidate();
@@ -169,7 +191,15 @@ internal sealed class WebShell : Form
 
             if (_refreshRect.Contains(e.Location))
             {
-                ActiveTab?.Core?.Reload();
+                if (_loading)
+                {
+                    ActiveTab?.Core?.Stop();
+                }
+                else
+                {
+                    ActiveTab?.Core?.Reload();
+                }
+
                 return;
             }
 
@@ -347,18 +377,36 @@ internal sealed class WebShell : Form
             core.NavigationStarting += (_, e) =>
             {
                 tab.Url = e.Uri;
+                tab.Loading = true;
                 if (ReferenceEquals(tab, _active))
                 {
-                    _address.Text = e.Uri;
+                    _loading = true;
+                    _spinTimer.Start();
+                    if (!_addressEditing)
+                    {
+                        _address.Text = e.Uri;
+                    }
+
+                    _toolbar.Invalidate();
                 }
             };
             core.NavigationCompleted += (_, e) =>
             {
+                tab.Loading = false;
+                if (ReferenceEquals(tab, _active))
+                {
+                    _loading = false;
+                    _spinTimer.Stop();
+                    _spinAngle = 0f;
+                    _toolbar.Invalidate();
+                }
+
                 if (e.IsSuccess)
                 {
                     RecordHistory(tab.Url, tab.Title);
                 }
             };
+            core.FaviconChanged += (_, _) => _ = LoadFaviconAsync(tab);
             core.NewWindowRequested += (_, e) =>
             {
                 // 站内 target=_blank 开成新标签页，不跳回浏览器。
@@ -542,6 +590,17 @@ internal sealed class WebShell : Form
         }
 
         _address.Text = tab.Url == "dsh://start" ? string.Empty : tab.Url;
+        _loading = tab.Loading;
+        if (_loading)
+        {
+            _spinTimer.Start();
+        }
+        else
+        {
+            _spinTimer.Stop();
+        }
+
+        _toolbar.Invalidate();
         RefreshTabStrip();
     }
 
@@ -568,6 +627,9 @@ internal sealed class WebShell : Form
                 _webHost.Controls.Remove(tab.Start);
                 tab.Start.Dispose();
             }
+
+            tab.Icon?.Dispose();
+            tab.Icon = null;
         }
         catch (Exception ex)
         {
@@ -925,14 +987,110 @@ internal sealed class WebShell : Form
             Fluent.Fill(g, new RectangleF(0, 0, width, height), Fluent.Mix(Fluent.Mica, Fluent.HoverLayer, 0.5f));
         }
 
-        // 刷新 / 在浏览器打开：画在地址框内部右侧，悬停时叠 8% 状态层。
+        // 非编辑态：自绘站点图标 + 弱化的 scheme + 地址；编辑态由原生输入框自己画。
+        if (!_addressEditing)
+        {
+            DrawAddressDisplay(g, width, height);
+        }
+
         var iconSize = 16f * _scale;
         var refreshState = _hoverFieldButton == 1 ? VisualState.Hover : VisualState.Rest;
         var externalState = _hoverFieldButton == 2 ? VisualState.Hover : VisualState.Rest;
-        Fluent.IconButton(g, _refreshRect, "refresh", refreshState, iconSize,
-            refreshState == VisualState.Hover ? Fluent.TextPrimary : Fluent.TextSecondary);
+
+        if (_loading)
+        {
+            if (_hoverFieldButton == 1)
+            {
+                using var plate = Fluent.Rounded(_refreshRect, Fluent.RControl);
+                Fluent.Fill(g, plate, Fluent.HoverLayer);
+            }
+
+            DrawLoadingSpinner(g, _refreshRect);
+        }
+        else
+        {
+            Fluent.IconButton(g, _refreshRect, "refresh", refreshState, iconSize,
+                refreshState == VisualState.Hover ? Fluent.TextPrimary : Fluent.TextSecondary);
+        }
+
         Fluent.IconButton(g, _externalRect, "external", externalState, iconSize,
             externalState == VisualState.Hover ? Fluent.TextPrimary : Fluent.TextSecondary);
+    }
+
+    /// <summary>地址行显示态：站点图标 + 三级文字的 scheme + 主文字的其余部分。</summary>
+    private void DrawAddressDisplay(Graphics g, int width, int height)
+    {
+        var scale = _scale;
+        var iconSize = 16f * scale;
+        var left = (float)S(12);
+        var middle = height / 2f;
+
+        var iconRect = new RectangleF(left, middle - (iconSize / 2f), iconSize, iconSize);
+        var tab = ActiveTab;
+        if (tab?.Icon is { } icon)
+        {
+            var state = g.Save();
+            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.DrawImage(icon, iconRect);
+            g.Restore(state);
+        }
+        else
+        {
+            // 新标签页 / 没有图标：用中性的窗口图标（16px 下品牌标会糊成一团）
+            Icons.Draw(g, "app-window", iconRect, Fluent.TextTertiary, 1.8f * scale);
+        }
+
+        var textLeft = left + iconSize + S(8);
+        var textRight = _refreshRect.X - S(8);
+        var textRect = new RectangleF(textLeft, 0, Math.Max(0, textRight - textLeft), height);
+        var font = Fluent.Font(TextRole.Body, false, scale);
+
+        var url = tab?.Url ?? string.Empty;
+        if (string.IsNullOrEmpty(url) || url == "dsh://start")
+        {
+            Fluent.Text(g, AddressPlaceholder, font, Fluent.TextTertiary, textRect);
+            return;
+        }
+
+        // 弱化 https://：只把 scheme 降一级颜色，其余保持主文字色。
+        var schemeEnd = url.IndexOf("://", StringComparison.Ordinal);
+        if (schemeEnd <= 0)
+        {
+            Fluent.Text(g, url, font, Fluent.TextPrimary, textRect,
+                StringAlignment.Near, StringTrimming.EllipsisCharacter);
+            return;
+        }
+
+        var scheme = url[..(schemeEnd + 3)];
+        var rest = url[(schemeEnd + 3)..];
+        var schemeWidth = Fluent.Measure(g, scheme, font);
+        Fluent.Text(g, scheme, font, Fluent.TextTertiary, textRect);
+        if (rest.Length > 0)
+        {
+            var restRect = new RectangleF(
+                textRect.X + schemeWidth,
+                textRect.Y,
+                Math.Max(0f, textRect.Width - schemeWidth),
+                textRect.Height);
+            Fluent.Text(g, rest, font, Fluent.TextSecondary, restRect,
+                StringAlignment.Near, StringTrimming.EllipsisCharacter);
+        }
+    }
+
+    /// <summary>加载中：刷新按钮的位置画一段旋转的弧。</summary>
+    private void DrawLoadingSpinner(Graphics g, RectangleF rect)
+    {
+        var state = g.Save();
+        Fluent.AntiAlias(g);
+        var inset = 6f * _scale;
+        var circle = RectangleF.Inflate(rect, -inset, -inset);
+        using var pen = new Pen(Fluent.AccentText, 2f * _scale)
+        {
+            StartCap = LineCap.Round,
+            EndCap = LineCap.Round,
+        };
+        g.DrawArc(pen, circle, _spinAngle, 270f);
+        g.Restore(state);
     }
 
     // ---------------------------------------------------------------- 标签交互
@@ -1105,7 +1263,7 @@ internal sealed class WebShell : Form
     }
 
     /// <summary>地址行是扁平的：默认和工具条同色，只有悬停/聚焦才提亮。</summary>
-    private Color AddressFill => _address.Focused
+    private Color AddressFill => _addressEditing
         ? Fluent.ControlFill
         : _addressHover ? Fluent.Mix(Fluent.Mica, Fluent.HoverLayer, 0.5f) : Fluent.Mica;
 
@@ -1217,6 +1375,9 @@ internal sealed class WebShell : Form
             ToggleAddressBar();
         }
 
+        _addressEditing = true;
+        _address.Visible = true;
+        _address.BackColor = AddressFill;
         _address.Focus();
         if (selectAll)
         {
@@ -1225,6 +1386,61 @@ internal sealed class WebShell : Form
         else
         {
             _address.SelectionStart = _address.TextLength;
+        }
+
+        _toolbar.Invalidate();
+    }
+
+    /// <summary>退出编辑：切回自绘显示（弱化 scheme + favicon）。</summary>
+    private void EndAddressEditing()
+    {
+        if (!_addressEditing)
+        {
+            return;
+        }
+
+        _addressEditing = false;
+        _address.Visible = false;
+        _toolbar.Invalidate();
+    }
+
+    /// <summary>读取当前标签页的站点图标（WebView2 自带，不走网络）。</summary>
+    private async Task LoadFaviconAsync(Tab tab)
+    {
+        var core = tab.Core;
+        if (core is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await using var stream = await core.GetFaviconAsync(CoreWebView2FaviconImageFormat.Png);
+            Image? icon = null;
+            if (stream is not null)
+            {
+                using var buffer = new MemoryStream();
+                await stream.CopyToAsync(buffer);
+                if (buffer.Length > 0)
+                {
+                    buffer.Position = 0;
+                    using var raw = Image.FromStream(buffer);
+                    icon = new Bitmap(raw, 32, 32);
+                }
+            }
+
+            var old = tab.Icon;
+            tab.Icon = icon;
+            old?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            AppPaths.Log($"读取站点图标失败：{ex.Message}");
+        }
+
+        if (ReferenceEquals(tab, _active))
+        {
+            _toolbar.Invalidate();
         }
     }
 
@@ -1592,6 +1808,7 @@ internal sealed class WebShell : Form
         if (disposing)
         {
             Fluent.Changed -= OnFluentChanged;
+            _spinTimer.Dispose();
             _collapse?.Dispose();
             _minimize?.Dispose();
             _maximize?.Dispose();
@@ -1616,6 +1833,8 @@ internal sealed class WebShell : Form
         public string Url { get; set; } = "";
         public string Title { get; set; } = "新标签页";
         public bool Ready { get; set; }
+        public bool Loading { get; set; }
+        public Image? Icon { get; set; }
     }
 
     /// <summary>自绘面板基类：尺寸变化即整体重绘（ResizeRedraw），双缓冲避免闪烁。</summary>
