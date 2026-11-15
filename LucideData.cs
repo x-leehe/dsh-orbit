@@ -123,6 +123,10 @@ internal static partial class LucideData
         {
             "P|m6 9 6 6 6-6",
         },
+        ["chevron-up"] = new[]
+        {
+            "P|m18 15-6-6-6 6",
+        },
         ["circle-stop"] = new[]
         {
             "R|9|9|6|6|1",

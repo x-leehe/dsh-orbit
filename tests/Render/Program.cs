@@ -30,6 +30,12 @@ internal static class Program
         var onlyIndex = Array.IndexOf(args, "--only");
         var only = onlyIndex >= 0 && onlyIndex + 1 < args.Length ? args[onlyIndex + 1] : null;
 
+        if (args.Contains("--verify-toggle"))
+        {
+            VerifyToggle();
+            return;
+        }
+
         if (args.Contains("--icons"))
         {
             DrawIconSheet(Path.Combine(outputDir, "icons.png"));
@@ -77,6 +83,44 @@ internal static class Program
         }
 
         Application.ExitThread();
+    }
+
+    /// <summary>
+    /// 地址栏折叠的确定性验证：不开窗、不碰 WebView2，直接调内部方法看布局是否真的变了。
+    /// </summary>
+    private static void VerifyToggle()
+    {
+        Fluent.Init(AppTheme.Dark);
+        var shell = new WebShell("", ShellCloseMode.Hide);
+        var type = typeof(WebShell);
+        const System.Reflection.BindingFlags Flags =
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+
+        var toggle = type.GetMethod("ToggleAddressBar", Flags)!;
+        var layout = type.GetMethod("LayoutChildren", Flags)!;
+        var toolbar = (Control)type.GetField("_toolbar", Flags)!.GetValue(shell)!;
+        var host = (Control)type.GetField("_webHost", Flags)!.GetValue(shell)!;
+        var collapse = (Control)type.GetField("_collapse", Flags)!.GetValue(shell)!;
+
+        // 账本：窗体不显示时 CreateControl 不建句柄，ApplyBounds 会早退，所以直接驱动布局。
+        shell.ClientSize = new Size(1280, 860);
+        layout.Invoke(shell, new object[] { 1280, 860 });
+
+        var collapsedField = type.GetField("_addressCollapsed", Flags)!;
+
+        void Report(string label) => Console.WriteLine(
+            $"{label,-10} flag={collapsedField.GetValue(shell),-5} created={shell.IsHandleCreated,-5} " +
+            $"toolbarVisible={toolbar.Visible,-5} toolbar={toolbar.Bounds} hostTop={host.Top,-3} hostH={host.Height,-3} " +
+            $"collapseX={collapse.Left} client={shell.ClientSize}");
+
+        Report("expanded");
+        toggle.Invoke(shell, null);
+        layout.Invoke(shell, new object[] { 1280, 860 });
+        Report("collapsed");
+        toggle.Invoke(shell, null);
+        layout.Invoke(shell, new object[] { 1280, 860 });
+        Report("expanded2");
+        shell.Dispose();
     }
 
     // ---------------------------------------------------------------- 挂件

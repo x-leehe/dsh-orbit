@@ -31,6 +31,9 @@ internal sealed class ShellState
     /// <summary>新标签页的自定义背景图（绝对路径，空 = 默认渐变）。</summary>
     public string? BackgroundPath { get; set; }
 
+    /// <summary>外壳的地址栏是否收起（收起后网页区域多出 36px）。</summary>
+    public bool AddressCollapsed { get; set; }
+
     public static ShellState CreateDefault()
     {
         return new ShellState

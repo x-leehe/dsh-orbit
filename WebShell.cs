@@ -45,8 +45,7 @@ internal sealed class WebShell : Form
     private readonly TitleBarPanel _header;
     private readonly EdgePanel _toolbar;
     private readonly TextBox _address;
-    private readonly HeaderButton _refresh;
-    private readonly HeaderButton _external;
+    private readonly HeaderButton _collapse;
     private readonly TrafficButton _minimize;
     private readonly TrafficButton _maximize;
     private readonly TrafficButton _close;
@@ -65,6 +64,10 @@ internal sealed class WebShell : Form
 
     private Rectangle _plusRect = Rectangle.Empty;
     private Rectangle _addressChrome = Rectangle.Empty;
+    private Rectangle _refreshRect = Rectangle.Empty;
+    private Rectangle _externalRect = Rectangle.Empty;
+    private int _hoverFieldButton;
+    private bool _addressCollapsed;
     private float _scale = 1f;
     private float _brandWidth;
     private int _brandTextX;
@@ -114,19 +117,20 @@ internal sealed class WebShell : Form
         _header.MouseLeave += HeaderMouseLeave;
         _header.MouseUp += HeaderMouseUp;
 
-        _refresh = new HeaderButton("刷新", () => ActiveTab?.Core?.Reload()) { Glyph = "refresh" };
-        _external = new HeaderButton("在浏览器打开", OpenExternal) { Glyph = "external" };
+        _collapse = new HeaderButton("收起 / 展开地址栏", ToggleAddressBar) { Glyph = "chevron-up" };
         _close = new TrafficButton(TrafficButton.Dot.Close, "关闭", HideOrClose);
         _minimize = new TrafficButton(TrafficButton.Dot.Minimize, "最小化", () => BeginInvoke(MinimizeWindow));
         _maximize = new TrafficButton(TrafficButton.Dot.Maximize, "最大化", () => BeginInvoke(ToggleMaximize));
 
-        _header.Controls.Add(_refresh);
-        _header.Controls.Add(_external);
+        _header.Controls.Add(_collapse);
         _header.Controls.Add(_minimize);
         _header.Controls.Add(_maximize);
         _header.Controls.Add(_close);
 
-        // ---- 工具条（36px）：Mica 底 + Fluent.TextBox 地址栏 ----
+        _addressCollapsed = _shellState.AddressCollapsed;
+        _collapse.Glyph = _addressCollapsed ? "chevron-down" : "chevron-up";
+
+        // ---- 工具条（36px）：Mica 底 + Fluent.TextBox 地址栏（收起时为 0 高）----
         _toolbar = new EdgePanel { BackColor = Fluent.Mica };
         _toolbar.Paint += PaintToolbar;
         _toolbar.MouseEnter += (_, _) => UpdateAddressHover();
@@ -157,13 +161,39 @@ internal sealed class WebShell : Form
         _toolbar.Controls.Add(_address);
         _toolbar.MouseDown += (_, e) =>
         {
-            // 点在输入框左右内边距上也要能开始编辑。
-            if (e.Button == MouseButtons.Left && _addressChrome.Contains(e.Location))
+            if (e.Button != MouseButtons.Left)
             {
-                _address.Focus();
-                _address.SelectionStart = _address.TextLength;
+                return;
+            }
+
+            if (_refreshRect.Contains(e.Location))
+            {
+                ActiveTab?.Core?.Reload();
+                return;
+            }
+
+            if (_externalRect.Contains(e.Location))
+            {
+                OpenExternal();
+                return;
+            }
+
+            // 点在输入框左右内边距上也要能开始编辑。
+            if (_addressChrome.Contains(e.Location))
+            {
+                FocusAddress(selectAll: false);
             }
         };
+
+        _toolbar.MouseMove += (_, e) =>
+        {
+            var hover = _refreshRect.Contains(e.Location) ? 1
+                : _externalRect.Contains(e.Location) ? 2
+                : 0;
+            SetFieldButtonHover(hover);
+        };
+
+        _toolbar.MouseLeave += (_, _) => SetFieldButtonHover(0);
 
         // ---- 网页区域 ----
         _webHost = new EdgePanel { BackColor = Fluent.Mica };
@@ -185,8 +215,7 @@ internal sealed class WebShell : Form
         {
             if (e.Control && e.KeyCode == Keys.L)
             {
-                _address.Focus();
-                _address.SelectAll();
+                FocusAddress(selectAll: true);
             }
             else if (e.Control && e.KeyCode == Keys.T)
             {
@@ -625,12 +654,13 @@ internal sealed class WebShell : Form
 
         _scale = DeviceDpi / 96f;
         var titleHeight = S(TitleBarHeight);
-        var toolHeight = S(ToolbarHeight);
+        var toolHeight = _addressCollapsed ? 0 : S(ToolbarHeight);
         var control = S(ControlSize);
         var margin = S(12);
         var rowY = S(8);
 
         _header.Bounds = new Rectangle(0, 0, width, titleHeight);
+        _toolbar.Visible = !_addressCollapsed;
         _toolbar.Bounds = new Rectangle(0, titleHeight, width, toolHeight);
         _webHost.Bounds = new Rectangle(0, titleHeight + toolHeight, width,
             Math.Max(0, height - titleHeight - toolHeight));
@@ -643,11 +673,9 @@ internal sealed class WebShell : Form
         _maximize.Bounds = new Rectangle(maxX, rowY, control, control);
         _minimize.Bounds = new Rectangle(minX, rowY, control, control);
 
-        // 工具按钮（刷新 / 在浏览器打开）放红绿灯左边。
-        var externalX = minX - S(12) - control;
-        var refreshX = externalX - S(4) - control;
-        _external.Bounds = new Rectangle(externalX, rowY, control, control);
-        _refresh.Bounds = new Rectangle(refreshX, rowY, control, control);
+        // 收起/展开地址栏的按钮固定住在红绿灯左边（收起后也看得见、点得到）。
+        var collapseX = minX - S(12) - control;
+        _collapse.Bounds = new Rectangle(collapseX, rowY, control, control);
 
         // 品牌（◈ + DSH-Orbit），1px 分隔线，标签紧接其后；+ 跟在标签末尾（放不下时钉在标签区最右）。
         _brandTextX = S(12) + S(18) + S(8);
@@ -655,17 +683,33 @@ internal sealed class WebShell : Form
         var brandEnd = _brandTextX + (int)MathF.Ceiling(_brandWidth) + S(4);
         _brandDividerX = brandEnd + S(12);
         _tabsStart = brandEnd + S(24);
-        _tabsRegionRight = refreshX - S(8);
+        _tabsRegionRight = collapseX - S(8);
         _tabStripTop = rowY;
         LayoutTabs();
 
-        // 工具条：地址栏左右各 12 内边距，TextField 32 高、上下各 2。
+        // 工具条：地址栏左右各 12 内边距，TextField 32 高、上下各 2；
+        // 刷新 / 在浏览器打开两个按钮挪进地址栏内部右侧，地址文字让出它们的宽度。
         _addressChrome = new Rectangle(S(12), S(2), Math.Max(S(80), width - (2 * S(12))), S(32));
+        var fieldButton = S(28);
+        var fieldPad = S(6);
+        _externalRect = new Rectangle(
+            _addressChrome.Right - fieldPad - fieldButton,
+            _addressChrome.Y + ((_addressChrome.Height - fieldButton) / 2),
+            fieldButton,
+            fieldButton);
+        _refreshRect = new Rectangle(
+            _externalRect.X - S(2) - fieldButton,
+            _externalRect.Y,
+            fieldButton,
+            fieldButton);
+
         var preferred = _address.PreferredHeight;
+        var textLeft = _addressChrome.X + S(10);
+        var textRight = _refreshRect.X - S(8);
         _address.Bounds = new Rectangle(
-            _addressChrome.X + S(10),
+            textLeft,
             _addressChrome.Y + Math.Max(0, (_addressChrome.Height - preferred) / 2),
-            Math.Max(S(40), _addressChrome.Width - (2 * S(10))),
+            Math.Max(S(40), textRight - textLeft),
             preferred);
 
         ResizeWebViews();
@@ -876,6 +920,15 @@ internal sealed class WebShell : Form
             _address.Focused,
             _addressHover,
             _scale);
+
+        // 刷新 / 在浏览器打开：画在地址框内部右侧，悬停时叠 8% 状态层。
+        var iconSize = 16f * _scale;
+        var refreshState = _hoverFieldButton == 1 ? VisualState.Hover : VisualState.Rest;
+        var externalState = _hoverFieldButton == 2 ? VisualState.Hover : VisualState.Rest;
+        Fluent.IconButton(g, _refreshRect, "refresh", refreshState, iconSize,
+            refreshState == VisualState.Hover ? Fluent.TextPrimary : Fluent.TextSecondary);
+        Fluent.IconButton(g, _externalRect, "external", externalState, iconSize,
+            externalState == VisualState.Hover ? Fluent.TextPrimary : Fluent.TextSecondary);
     }
 
     // ---------------------------------------------------------------- 标签交互
@@ -1063,8 +1116,7 @@ internal sealed class WebShell : Form
         _address.ForeColor = Fluent.TextPrimary;
         _address.Font = Fluent.Font(TextRole.Body, false, _scale);
 
-        _refresh.SyncTheme();
-        _external.SyncTheme();
+        _collapse.SyncTheme();
         _minimize.SyncTheme();
         _maximize.SyncTheme();
         _close.SyncTheme();
@@ -1136,6 +1188,50 @@ internal sealed class WebShell : Form
         {
             // Windows 10 早期的 dwmapi 没有这些属性，忽略。
         }
+    }
+
+    /// <summary>收起 / 展开地址栏；收起后网页区域向上多占一条工具条的高度。</summary>
+    private void ToggleAddressBar()
+    {
+        _addressCollapsed = !_addressCollapsed;
+        _collapse.Glyph = _addressCollapsed ? "chevron-down" : "chevron-up";
+        _shellState.AddressCollapsed = _addressCollapsed;
+        ShellStore.Save(_shellState);
+        ApplyBounds();
+        _header.Invalidate();
+        _toolbar.Invalidate();
+    }
+
+    /// <summary>聚焦地址栏；收起状态下先展开。</summary>
+    private void FocusAddress(bool selectAll)
+    {
+        if (_addressCollapsed)
+        {
+            ToggleAddressBar();
+        }
+
+        _address.Focus();
+        if (selectAll)
+        {
+            _address.SelectAll();
+        }
+        else
+        {
+            _address.SelectionStart = _address.TextLength;
+        }
+    }
+
+    /// <summary>地址栏内按钮的悬停（0 无 / 1 刷新 / 2 在浏览器打开）。</summary>
+    private void SetFieldButtonHover(int index)
+    {
+        if (_hoverFieldButton == index)
+        {
+            return;
+        }
+
+        _hoverFieldButton = index;
+        _toolbar.Cursor = index == 0 ? Cursors.Default : Cursors.Hand;
+        _toolbar.Invalidate();
     }
 
     private void UpdateAddressHover()
@@ -1485,8 +1581,7 @@ internal sealed class WebShell : Form
         if (disposing)
         {
             Fluent.Changed -= OnFluentChanged;
-            _refresh?.Dispose();
-            _external?.Dispose();
+            _collapse?.Dispose();
             _minimize?.Dispose();
             _maximize?.Dispose();
             _close?.Dispose();

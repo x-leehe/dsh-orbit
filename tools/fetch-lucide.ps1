@@ -39,6 +39,7 @@ $icons = [ordered]@{
     'zap'           = 'zap'
     'app-window'    = 'app-window'
     'chevron-down'  = 'chevron-down'
+    'chevron-up'    = 'chevron-up'
     'circle-stop'   = 'circle-stop'
     'check'         = 'check'
     'search'        = 'search'
