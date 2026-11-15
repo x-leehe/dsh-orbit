@@ -23,7 +23,8 @@ dotnet build -c Release          # 编译（必须通过）
 .\build.ps1                      # 产出 dist\DSH-Orbit.exe 与 dist-lite\DSH-Orbit.exe
 dotnet run --project tests/Harness -c Release     # 冒烟测试（会起隔离的 dsh 实例）
 dotnet run --project tools/IconGen -c Release -- .
-dotnet run --project tests/Render -c Release -- docs
+dotnet run --project tests/Render -c Release -- artifacts/gallery            # 全部界面 × 浅/深
+dotnet run --project tests/Render -c Release -- artifacts/gallery --only menu
 ```
 
 涉及图标的改动必须重新跑 `tools/IconGen`，否则 `app.ico` 会过期。
@@ -35,10 +36,26 @@ dotnet run --project tests/Render -c Release -- docs
 - 自绘 UI 统一走 GDI+（`Graphics` + `TextRenderingHint.AntiAlias`）；
   不要用 `TextRenderer`/GDI，它的文字画到带 alpha 的位图上会出现锯齿。
 - 分层窗口（挂件）改动后要验证：透明、抗锯齿、点击穿透仍然正常。
-- 配色：界面强调色是 `#7AAAFF`；挂件里"运行中"用绿色 `#3FD08A`（状态语义，不是品牌色）。
+- **界面配色一律从 `Fluent` 取，禁止颜色字面量**（`Color.FromArgb` 只允许出现在 `Fluent.cs`）；
+  半透明叠加用 `Fluent.WithAlpha` / `Fluent.Mix`。设计规范见 `docs/design-fluent.md`。
+- 版式走 WinUI 3 的字号阶梯（`TextRole`），**最小 12px**；尺寸走 4px 网格。
 - 图标：只能用 Lucide 官方几何（`tools/fetch-lucide.ps1` → `LucideData.cs`），
   禁止手绘近似 Lucide 图标；品牌 logo（DSH 鲸鱼）来自 `DshMark.cs`。
 - 不要把 `bin/`、`obj/`、`dist/`、`dist-lite/` 提交进仓库。
+
+## 设计系统（WinUI 3 × Material 3）
+
+界面设计语言是 Fluent（WinUI 3），融合少量 Material 3 的状态层/抬升/形状。所有令牌与绘制原语在 `Fluent.cs`：
+
+- 主题：`Fluent.Init(config.Theme)` 启动时调用；`Fluent.Refresh()` 在心跳里跟随系统主题与强调色；
+  用户可在托盘菜单「外观」里强制浅色/深色（`config.Theme`）。
+- 颜色：`Mica` / `Layer` / `Flyout` / `ControlFill` / `StrokeColor` / `TextPrimary…Tertiary` /
+  `AccentFill` / `Success` / `Caution` / `Critical`；强调色取自系统，深浅阶自动推导。
+- 字体：`Segoe UI Variable Text / Display / Small`（Win10 回落 `Segoe UI`），中文由系统字体链回落。
+- 圆角只有四档：`RControl=4`、`RCard=8`、`RTile=16`、`RPill=999`。
+- 原语：`Card` / `Tile` / `Button` / `IconButton` / `Segmented` / `MenuRow` / `Pill` / `TextBox` / `Divider`。
+- 控件级 Fluent 包装（对话框用）：`FluentButton`、`FluentTextBox`（`FluentControls.cs`）。
+- 视觉验收：`RenderPreview.exe artifacts\gallery` 渲染 **浅色/深色 × 全部界面**，逐张比对规范。
 
 ## 可空引用
 

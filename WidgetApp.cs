@@ -952,11 +952,6 @@ internal sealed class WidgetApp : ApplicationContext
             }
 
             _trayMenu?.Invalidate(true);
-
-            if (_config.Visible)
-            {
-                _form.Refresh();
-            }
         }
         catch (Exception ex)
         {

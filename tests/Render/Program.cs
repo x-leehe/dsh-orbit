@@ -232,18 +232,75 @@ internal static class Program
     {
         var shell = new WebShell(url, ShellCloseMode.Hide);
         shell.Show();
+        shell.TopMost = true;
+        shell.Activate();
         Pump(900);
 
-        using var bitmap = new Bitmap(shell.Width, shell.Height);
-        using (var g = Graphics.FromImage(bitmap))
-        {
-            g.CopyFromScreen(shell.Left, shell.Top, 0, 0, shell.Size);
-        }
+        using var bitmap = Capture(shell);
 
         bitmap.Save(Path.Combine(outputDir, $"shell-{suffix}.png"), ImageFormat.Png);
         Console.WriteLine($"saved shell-{suffix}.png");
         shell.ForceClose();
     }
+
+    /// <summary>
+    /// 抓窗口内容：优先 PrintWindow(PW_RENDERFULLCONTENT)，失败或被其他窗口遮挡时再退回屏幕拷贝。
+    /// 直接用 CopyFromScreen 会把盖在上面的窗口一起拍进来。
+    /// </summary>
+    private static Bitmap Capture(Form form)
+    {
+        var bitmap = new Bitmap(form.Width, form.Height);
+        var rendered = false;
+        try
+        {
+            using var g = Graphics.FromImage(bitmap);
+            var hdc = g.GetHdc();
+            try
+            {
+                rendered = PrintWindow(form.Handle, hdc, 2);
+            }
+            finally
+            {
+                g.ReleaseHdc(hdc);
+            }
+        }
+        catch
+        {
+            rendered = false;
+        }
+
+        if (rendered && !IsBlank(bitmap))
+        {
+            return bitmap;
+        }
+
+        using (var g = Graphics.FromImage(bitmap))
+        {
+            g.CopyFromScreen(form.Left, form.Top, 0, 0, form.Size);
+        }
+
+        return bitmap;
+    }
+
+    private static bool IsBlank(Bitmap bitmap)
+    {
+        var first = bitmap.GetPixel(0, 0);
+        for (var y = 0; y < bitmap.Height; y += 7)
+        {
+            for (var x = 0; x < bitmap.Width; x += 7)
+            {
+                if (bitmap.GetPixel(x, y) != first)
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool PrintWindow(IntPtr hwnd, IntPtr hdc, uint flags);
 
     // ---------------------------------------------------------------- 令牌自查表
 

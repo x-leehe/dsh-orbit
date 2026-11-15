@@ -219,10 +219,10 @@ internal static class Fluent
             TextTertiary = Color.FromArgb(114, 0, 0, 0);
             TextDisabled = Color.FromArgb(92, 0, 0, 0);
 
-            AccentFill = Shade(accent, -0.16);
-            AccentFillHover = Shade(accent, -0.06);
-            AccentFillPressed = Shade(accent, -0.26);
-            AccentText = Shade(accent, -0.2);
+            AccentFill = Shade(accent, -0.06);
+            AccentFillHover = Shade(accent, 0.02);
+            AccentFillPressed = Shade(accent, -0.14);
+            AccentText = Shade(accent, -0.12);
             OnAccent = Color.White;
 
             Success = Color.FromArgb(0x0F, 0x7B, 0x0F);
@@ -621,7 +621,7 @@ internal static class Fluent
         var (rings, alpha, spread, offsetY) = level switch
         {
             1 => (5, 4, 1.2f, 1),
-            2 => (9, 3, 1.6f, 2),
+            2 => (8, 3, 1.2f, 2),
             3 => (16, 2, 1.6f, 3),
             _ => (0, 0, 0f, 0),
         };
@@ -835,17 +835,18 @@ internal static class Fluent
             return;
         }
 
-        var segment = (rect.Width - 4f) / labels.Count;
+        var inset = 2f * scale;
+        var segment = (rect.Width - (2 * inset)) / labels.Count;
         for (var i = 0; i < labels.Count; i++)
         {
-            var cell = new RectangleF(rect.X + 2 + (i * segment), rect.Y + 2, segment, rect.Height - 4);
+            var cell = new RectangleF(rect.X + inset + (i * segment), rect.Y + inset, segment, rect.Height - (2 * inset));
             var active = i == selected;
 
             if (active)
             {
                 using var path = Rounded(cell, RControl - 1);
-                Fill(g, path, Mix(Layer, AccentFill, IsDark ? 0.18f : 0.14f));
-                Stroke(g, path, Mix(StrokeStrong, AccentFill, 0.5f), 1f);
+                Fill(g, path, Mix(Layer, AccentFill, 0.24f));
+                Stroke(g, path, Mix(StrokeStrong, AccentFill, 0.7f), 1f);
             }
             else if (i == hoverIndex)
             {
@@ -880,28 +881,31 @@ internal static class Fluent
 
         var fg = foreground ?? (state == VisualState.Disabled ? TextDisabled : TextPrimary);
         var iconSize = 16f * scale;
-        var x = rect.X + 12f;
+        var padX = 12f * scale;
+        var x = rect.X + padX;
         if (icon is not null)
         {
             Icons.Draw(g, icon,
                 new RectangleF(x, rect.Y + ((rect.Height - iconSize) / 2f), iconSize, iconSize),
                 fg,
                 2f);
-            x += iconSize + 12f;
+            x += iconSize + padX;
         }
 
-        var trailingWidth = 0f;
+        // 右侧内边距统一 12：状态值右对齐到该处，标题的可用宽度也截止到它左侧 8px。
+        var trailingPad = 12f * scale;
+        var labelRight = rect.Right - trailingPad;
         if (!string.IsNullOrEmpty(trailing))
         {
-            trailingWidth = Measure(g, trailing!, Font(TextRole.Caption, false, scale)) + 12f;
+            var trailingWidth = Measure(g, trailing!, Font(TextRole.Caption, false, scale)) + 4f;
+            var trailingRect = new RectangleF(labelRight - trailingWidth, rect.Y, trailingWidth, rect.Height);
             Text(g, trailing!, Font(TextRole.Caption, false, scale),
-                trailingAccent ? AccentText : TextTertiary,
-                new RectangleF(rect.Right - trailingWidth - 10, rect.Y, trailingWidth, rect.Height),
-                StringAlignment.Far);
+                trailingAccent ? AccentText : TextTertiary, trailingRect, StringAlignment.Far);
+            labelRight = trailingRect.X - (8f * scale);
         }
 
         Text(g, label, Font(TextRole.Body, false, scale), fg,
-            new RectangleF(x, rect.Y, rect.Right - x - trailingWidth - 10, rect.Height),
+            new RectangleF(x, rect.Y, Math.Max(0f, labelRight - x), rect.Height),
             StringAlignment.Near, StringTrimming.EllipsisCharacter);
     }
 

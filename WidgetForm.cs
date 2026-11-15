@@ -65,11 +65,12 @@ internal sealed class WidgetForm : Form
     public WidgetForm(WidgetConfig config)
     {
         _config = config;
+        _scale = DeviceDpi / 96f;
 
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.Manual;
-        BackColor = Color.FromArgb(12, 16, 23);
+        BackColor = Fluent.Mica;
         AutoScaleMode = AutoScaleMode.None;
         Text = "DSH-Orbit";
 
