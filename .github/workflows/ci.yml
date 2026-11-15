@@ -28,6 +28,9 @@ jobs:
       - name: Build
         run: dotnet build DshOrbit.csproj -c Release --no-restore
 
+      - name: Unit tests
+        run: dotnet test tests/Unit/Unit.csproj -c Release --nologo --verbosity normal
+
       - name: Publish (framework-dependent)
         run: |
           dotnet publish DshOrbit.csproj -c Release -o dist-lite

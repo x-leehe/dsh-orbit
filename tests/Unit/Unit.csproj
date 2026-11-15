@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>DshOrbit</RootNamespace>
+    <AssemblyName>DshOrbit.Unit</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 测试源码 -->
+    <Compile Include="*.cs" />
+
+    <!-- 生产源码（按依赖闭包显式包含；测试工程不引用主工程，直接编译这些文件） -->
+    <Compile Include="..\..\SvgPath.cs" />
+    <Compile Include="..\..\LucideData.cs" />
+    <Compile Include="..\..\Icons.cs" />
+    <Compile Include="..\..\Fluent.cs" />
+    <Compile Include="..\..\Models.cs" />
+    <Compile Include="..\..\Balance.cs" />
+    <Compile Include="..\..\DshSession.cs" />
+    <Compile Include="..\..\LoopbackAuthServer.cs" />
+    <Compile Include="..\..\Native.cs" />
+    <Compile Include="..\..\LayeredSurface.cs" />
+    <Compile Include="..\..\DshMark.cs" />
+    <Compile Include="..\..\OrbitMark.cs" />
+    <Compile Include="..\..\TrayMenuForm.cs" />
+  </ItemGroup>
+
+</Project>
