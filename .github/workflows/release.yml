@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: '要发布的 tag（例如 v0.1.0）'
+        description: '要发布的 tag（例如 v0.2.0）'
         required: true
 
 permissions:
@@ -26,6 +26,17 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # 发版门禁：CHANGELOG.md 里必须有这个 tag 的条目，否则这一步失败，后面一步都不会跑。
+      - name: Changelog gate
+        run: |
+          $tag = "${{ github.event.inputs.tag || github.ref_name }}"
+          Write-Host "tag = $tag"
+          pwsh -NoProfile -File tools/changelog.ps1 -Version $tag -Out release-body.md
+          Add-Content -Path release-body.md -Value "`n---`n"
+          Get-Content .github/release-footer.md -Raw | Add-Content -Path release-body.md
+          Write-Host "----- release body -----"
+          Get-Content release-body.md
+
       - name: Publish (self-contained single file)
         run: |
           dotnet publish DshOrbit.csproj -c Release -r win-x64 --self-contained true `
@@ -43,8 +54,8 @@ jobs:
       - name: Build installer (embeds the self-contained build)
         run: |
           $payload = Get-Item dist\DSH-Orbit.exe
-          if ($payload.Length -lt 10MB) { throw "安装器 payload 必须自带运行时" }
-          dotnet publish installer/Setup.csproj -c Release -o setup-dist -p:PayloadPath=dist\DSH-Orbit.exe
+          if ($payload.Length -lt 10MB) { throw "安装器 payload 必须自带运行时，实际 $($payload.Length) 字节" }
+          dotnet publish installer/Setup.csproj -c Release -o setup-dist
 
       - name: Rename assets
         run: |
@@ -57,16 +68,7 @@ jobs:
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           name: DSH-Orbit ${{ github.event.inputs.tag || github.ref_name }}
-          body: |
-            由 GitHub Actions 自动构建。
-
-            - `DSH-Orbit-Setup.exe`：**推荐**。7-Zip 风格的安装器，可选安装位置、快捷方式、开始菜单，写「应用和功能」卸载项；**不需要预装 .NET**（内部是自带运行时的版本）
-            - `DSH-Orbit.exe`：绿色单文件，自带 .NET 运行时（~47 MB）
-            - `DSH-Orbit-lite.exe`：最小体积，需要 .NET 10 桌面运行时（~1.5 MB）
-
-            三者都还需要系统装有 WebView2 运行时（Win10/11 一般自带）。
-
-            > 本项目为 AIGC（AI 生成内容），使用前请自行评估风险。
+          body_path: release-body.md
           files: |
             DSH-Orbit-Setup.exe
             DSH-Orbit.exe

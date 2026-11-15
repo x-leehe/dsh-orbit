@@ -109,6 +109,19 @@ dotnet run --project tests/Render -c Release -- artifacts/gallery --only menu
 
 日常开发只做到：改代码 → 本地构建 → `dotnet test tests/Unit` → 提交 → push main。
 
+### CHANGELOG 是发版门禁
+
+`CHANGELOG.md` 是 release 正文的**唯一来源**，没有条目就发不出去：
+
+1. 在 `CHANGELOG.md` 顶部加一节，标题严格为 `## [x.y.z] - YYYY-MM-DD`，正文按 `新增 / 变更 / 修复 / 移除` 分组；
+2. 把 `DshOrbit.csproj` 的 `<Version>` 改成同一个版本号；
+3. 本地自检：`pwsh tools/changelog.ps1 -Validate`（校验格式 + csproj 版本必须有条目）；
+4. `.github/workflows/release.yml` 的第一道关卡就是 `tools/changelog.ps1 -Version <tag>`，
+   取不到正文直接失败，**构建和上传都不会执行**；
+5. release 正文 = changelog 该版本正文 + `.github/release-footer.md`（下载说明），不要手写。
+
+安装器里的版本号来自 payload 的 FileVersion，而 FileVersion 来自 `<Version>`，所以改完记得重新 `build.ps1`。
+
 ## 不要做的事
 
 - 不要引入 GPL/AGPL 代码（本项目是 MIT）。FlClash 只作交互参考，不复制它的代码。

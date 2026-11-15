@@ -1061,7 +1061,7 @@ internal sealed class SetupForm : Form
             case "done":
                 _screen = Screen.Done;
                 _installedDir = InstallOptions.DefaultDirectory(InstallMode.User);
-                _installedVersion = "0.3.0";
+                _installedVersion = "0.2.0";
                 _progress = 100;
                 SetStatus("安装完成");
                 LayoutButtons();

@@ -25,7 +25,7 @@ internal static class AppInfo
     public const string Description = "给 dsh web 用的桌面挂件与浏览器外壳";
 
     /// <summary>payload 的 FileVersion 取不到时用它（对应 DshOrbit.csproj 的 Version）。</summary>
-    public const string FallbackVersion = "0.3.0";
+    public const string FallbackVersion = "0.2.0";
 
     public const string PayloadResourceName = "payload.app";
 
