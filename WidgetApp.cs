@@ -51,6 +51,9 @@ internal sealed class WidgetApp : ApplicationContext
         _config = config;
         AppPaths.Ensure();
 
+        // 令牌层必须在任何窗口创建前就绪（配色、字体都从它取）。
+        Fluent.Init(config.Theme);
+
         _form = new WidgetForm(config);
         _form.StartStopRequested += () => _ = ToggleDshAsync();
         _form.OpenRequested += OpenWebUi;
@@ -89,6 +92,8 @@ internal sealed class WidgetApp : ApplicationContext
                 ShowTrayMenu();
             }
         };
+
+        Fluent.Changed += OnThemeChanged;
 
         _host.Exited += () =>
         {
@@ -174,6 +179,9 @@ internal sealed class WidgetApp : ApplicationContext
 
     private void Tick()
     {
+        // 系统主题/强调色变了就跟着变（每个心跳读一次注册表，开销可忽略）。
+        Fluent.Refresh();
+
         UpdateMetrics();
         _form.SetStatus(BuildSnapshot());
         UpdateTray();
@@ -883,6 +891,15 @@ internal sealed class WidgetApp : ApplicationContext
             case "autostart:FullAuto":
                 AutoStart.SetMode(AutoStartMode.FullAuto);
                 break;
+            case "theme:System":
+                ApplyTheme(AppTheme.System);
+                break;
+            case "theme:Light":
+                ApplyTheme(AppTheme.Light);
+                break;
+            case "theme:Dark":
+                ApplyTheme(AppTheme.Dark);
+                break;
             case "eye":
                 if (_config.Visible)
                 {
@@ -903,6 +920,47 @@ internal sealed class WidgetApp : ApplicationContext
             case "exit":
                 RequestExit();
                 break;
+        }
+    }
+
+    private void ApplyTheme(AppTheme mode)
+    {
+        if (_config.Theme == mode)
+        {
+            return;
+        }
+
+        _config.Theme = mode;
+        JsonIo.Save(AppPaths.ConfigFile, _config);
+        Fluent.SetMode(mode); // 触发 Changed，由 OnThemeChanged 统一重绘
+    }
+
+    /// <summary>主题或强调色变化后，让所有窗口按新令牌重画。</summary>
+    private void OnThemeChanged()
+    {
+        try
+        {
+            if (_form is { IsDisposed: false })
+            {
+                _form.Refresh();
+            }
+
+            if (_shell is { IsDisposed: false } shell)
+            {
+                shell.Invalidate(true);
+                shell.Update();
+            }
+
+            _trayMenu?.Invalidate(true);
+
+            if (_config.Visible)
+            {
+                _form.Refresh();
+            }
+        }
+        catch (Exception ex)
+        {
+            AppPaths.Log($"主题重绘失败：{ex.Message}");
         }
     }
 

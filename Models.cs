@@ -98,6 +98,9 @@ internal sealed class WidgetConfig
     /// <summary>开机启动方式：停用 / 启用（只起挂件）/ 全自动（挂件 + dsh web）。</summary>
     public AutoStartMode AutoStartMode { get; set; } = AutoStartMode.Disabled;
 
+    /// <summary>外观主题：跟随系统 / 浅色 / 深色。</summary>
+    public AppTheme Theme { get; set; } = AppTheme.System;
+
     /// <summary>点地址时用内置 WebView2 外壳打开（false 则用默认浏览器）。</summary>
     public bool UseWebShell { get; set; } = true;
 
