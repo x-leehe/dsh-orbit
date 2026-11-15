@@ -3,144 +3,86 @@ using System.Windows.Forms;
 
 namespace DshOrbit;
 
-/// <summary>「添加搜索引擎」小对话框：深色、和外壳同一套配色。</summary>
+/// <summary>
+/// 「添加搜索引擎」对话框：WinUI ContentDialog 形态——
+/// 8px 圆角、24px 内边距、Subtitle 标题、底部右对齐的两个按钮。
+/// </summary>
 internal sealed class AddEngineDialog : Form
 {
-    private static readonly Color Back = Color.FromArgb(18, 23, 32);
-    private static readonly Color FieldBack = Color.FromArgb(28, 35, 47);
-    private static readonly Color TextPrimary = Color.FromArgb(232, 238, 246);
-    private static readonly Color TextMuted = Color.FromArgb(143, 160, 182);
-
-    private readonly TextBox _name;
-    private readonly TextBox _template;
-    private readonly Label _hint;
+    private readonly FluentTextBox _name;
+    private readonly FluentTextBox _template;
+    private readonly FluentButton _ok;
+    private readonly FluentButton _cancel;
+    private string? _error;
 
     public AddEngineDialog()
     {
         Text = "添加搜索引擎";
-        FormBorderStyle = FormBorderStyle.FixedDialog;
+        FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.CenterParent;
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
-        BackColor = Back;
-        ForeColor = TextPrimary;
-        ClientSize = new Size(420, 214);
-        Font = new Font("Segoe UI", 9.5f);
+        AutoScaleMode = AutoScaleMode.None;
+        BackColor = Fluent.Layer;
+        ForeColor = Fluent.TextPrimary;
+        DoubleBuffered = true;
+        KeyPreview = true;
 
-        var titleFont = new Font(Ui.PickFamily("HarmonyOS Sans SC Medium", "Segoe UI"), 12f, FontStyle.Regular, GraphicsUnit.Pixel);
-
-        Controls.Add(new Label
+        _name = new FluentTextBox { PlaceholderText = "例如：必应" };
+        _template = new FluentTextBox
         {
-            Text = "添加搜索引擎",
-            Font = titleFont,
-            ForeColor = TextPrimary,
-            AutoSize = true,
-            Location = new Point(20, 16),
-        });
+            Value = "https://www.bing.com/search?q={q}",
+            PlaceholderText = "https://example.com/search?q={q}",
+        };
 
-        Controls.Add(new Label
+        _ok = new FluentButton
         {
-            Text = "名称",
-            ForeColor = TextMuted,
-            AutoSize = true,
-            Location = new Point(20, 50),
-        });
+            Text = "添加",
+            Role = SurfaceRole.Accent,
+            IsDefault = true,
+        };
 
-        _name = new TextBox
+        _cancel = new FluentButton { Text = "取消" };
+
+        _ok.Click += (_, _) => TryAccept();
+        _cancel.Click += (_, _) =>
         {
-            Location = new Point(20, 70),
-            Width = 380,
-            BorderStyle = BorderStyle.FixedSingle,
-            BackColor = FieldBack,
-            ForeColor = TextPrimary,
+            DialogResult = DialogResult.Cancel;
+            Close();
         };
 
         Controls.Add(_name);
-        Controls.Add(new Label
-        {
-            Text = "搜索地址（用 {q} 代表关键词）",
-            ForeColor = TextMuted,
-            AutoSize = true,
-            Location = new Point(20, 100),
-        });
-
-        _template = new TextBox
-        {
-            Location = new Point(20, 120),
-            Width = 380,
-            BorderStyle = BorderStyle.FixedSingle,
-            BackColor = FieldBack,
-            ForeColor = TextPrimary,
-            Text = "https://www.bing.com/search?q={q}",
-        };
-
         Controls.Add(_template);
+        Controls.Add(_ok);
+        Controls.Add(_cancel);
 
-        _hint = new Label
-        {
-            ForeColor = Color.FromArgb(240, 120, 120),
-            AutoSize = false,
-            Location = new Point(20, 148),
-            Size = new Size(380, 20),
-            Text = "",
-        };
+        LayoutChildren();
 
-        Controls.Add(_hint);
+        Shown += (_, _) => _name.FocusInput();
 
-        var ok = new Button
-        {
-            Text = "添加",
-            DialogResult = DialogResult.OK,
-            Location = new Point(238, 172),
-            Size = new Size(78, 28),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.FromArgb(46, 60, 82),
-            ForeColor = TextPrimary,
-        };
-        ok.FlatAppearance.BorderColor = Color.FromArgb(70, 86, 110);
-
-        var cancel = new Button
-        {
-            Text = "取消",
-            DialogResult = DialogResult.Cancel,
-            Location = new Point(322, 172),
-            Size = new Size(78, 28),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.FromArgb(30, 37, 49),
-            ForeColor = TextMuted,
-        };
-        cancel.FlatAppearance.BorderColor = Color.FromArgb(52, 62, 78);
-
-        Controls.Add(ok);
-        Controls.Add(cancel);
-        AcceptButton = ok;
-        CancelButton = cancel;
-
-        // 用 FormClosing 拦截，校验不过就不关闭对话框。
+        // 校验不过就不关闭对话框（ShowDialog 的调用方只看 DialogResult）。
         FormClosing += (_, e) =>
         {
-            if (DialogResult != DialogResult.OK)
+            if (DialogResult != DialogResult.OK || Validate(out var error))
             {
                 return;
             }
 
-            if (!Validate(out var error))
-            {
-                e.Cancel = true;
-                DialogResult = DialogResult.None;
-                _hint.Text = error;
-            }
+            e.Cancel = true;
+            DialogResult = DialogResult.None;
+            _error = error;
+            Invalidate();
         };
     }
 
-    public string EngineName => _name.Text.Trim();
+    public string EngineName => _name.Value.Trim();
 
     public string Template
     {
         get
         {
-            var template = _template.Text.Trim();
+            var template = _template.Value.Trim();
             if (!template.Contains("{q}", StringComparison.OrdinalIgnoreCase))
             {
                 template += template.Contains('?') ? "&q={q}" : "?q={q}";
@@ -150,10 +92,121 @@ internal sealed class AddEngineDialog : Form
         }
     }
 
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        Native.EnableRoundedCorners(Handle);
+    }
+
+    protected override void OnDpiChanged(DpiChangedEventArgs e)
+    {
+        base.OnDpiChanged(e);
+        LayoutChildren();
+    }
+
+    private void LayoutChildren()
+    {
+        var scale = DeviceDpi / 96f;
+        int S(int v) => (int)MathF.Round(v * scale);
+
+        const int pad = 24;
+        const int width = 440;
+        const int height = 248;
+
+        ClientSize = new Size(S(width), S(height));
+
+        var fieldWidth = S(width - (2 * pad));
+        _name.Bounds = new Rectangle(S(pad), S(82), fieldWidth, S(32));
+        _template.Bounds = new Rectangle(S(pad), S(144), fieldWidth, S(32));
+
+        var buttonWidth = S(88);
+        var buttonHeight = S(32);
+        _ok.Bounds = new Rectangle(S(width - pad) - buttonWidth, S(200), buttonWidth, buttonHeight);
+        _cancel.Bounds = new Rectangle(
+            _ok.Left - S(8) - buttonWidth, S(200), buttonWidth, buttonHeight);
+
+        _ok.Font = Fluent.Font(TextRole.Body, false, scale);
+        _cancel.Font = Fluent.Font(TextRole.Body, false, scale);
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        var g = e.Graphics;
+        Fluent.AntiAlias(g);
+
+        var scale = DeviceDpi / 96f;
+        int S(int v) => (int)MathF.Round(v * scale);
+        const int pad = 24;
+
+        Fluent.Card(g, new RectangleF(0.5f, 0.5f, ClientSize.Width - 1, ClientSize.Height - 1),
+            Fluent.RCard, 0, Fluent.Layer);
+
+        Fluent.Text(g, "添加搜索引擎", TextRole.Subtitle, true, Fluent.TextPrimary,
+            new RectangleF(S(pad), S(20), S(320), Fluent.LineHeight(TextRole.Subtitle)), StringAlignment.Near,
+            StringTrimming.None, scale);
+
+        Fluent.Text(g, "名称", TextRole.Caption, false, Fluent.TextSecondary,
+            new RectangleF(S(pad), S(62), S(200), S(16)), StringAlignment.Near, StringTrimming.None, scale);
+
+        Fluent.Text(g, "搜索地址（用 {q} 代表关键词）", TextRole.Caption, false, Fluent.TextSecondary,
+            new RectangleF(S(pad), S(124), S(320), S(16)), StringAlignment.Near, StringTrimming.None, scale);
+
+        if (!string.IsNullOrEmpty(_error))
+        {
+            Fluent.Text(g, _error, TextRole.Caption, false, Fluent.Critical,
+                new RectangleF(S(pad), S(180), S(392), S(16)), StringAlignment.Near,
+                StringTrimming.EllipsisCharacter, scale);
+        }
+    }
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (e.KeyCode == Keys.Escape)
+        {
+            DialogResult = DialogResult.Cancel;
+            Close();
+            e.Handled = true;
+        }
+        else if (e.KeyCode == Keys.Enter)
+        {
+            TryAccept();
+            e.Handled = true;
+        }
+    }
+
+    // 让标题空白处可以拖动对话框（无边框窗口没有系统标题栏）。
+    private const int WM_NCHITTEST = 0x0084;
+    private const int HTCLIENT = 1;
+    private const int HTCAPTION = 2;
+
+    protected override void WndProc(ref Message m)
+    {
+        base.WndProc(ref m);
+        if (m.Msg == WM_NCHITTEST && m.Result == HTCLIENT && Cursor.Position.Y - Top < (int)(56 * DeviceDpi / 96f))
+        {
+            m.Result = HTCAPTION;
+        }
+    }
+
+    private void TryAccept()
+    {
+        if (!Validate(out var error))
+        {
+            _error = error;
+            Invalidate();
+            return;
+        }
+
+        _error = null;
+        DialogResult = DialogResult.OK;
+        Close();
+    }
+
     private bool Validate(out string? error)
     {
         error = null;
-        if (_name.Text.Trim().Length == 0)
+        if (_name.Value.Trim().Length == 0)
         {
             error = "名称不能为空";
             return false;

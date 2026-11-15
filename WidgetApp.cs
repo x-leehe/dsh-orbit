@@ -82,7 +82,7 @@ internal sealed class WidgetApp : ApplicationContext
         {
             Visible = true,
             Text = "DSH-Orbit",
-            Icon = IconFactory.Create(Color.FromArgb(120, 132, 152)),
+            Icon = IconFactory.Create(Fluent.TextTertiary),
         };
         _tray.DoubleClick += (_, _) => ShowWidget();
         _tray.MouseUp += (_, e) =>

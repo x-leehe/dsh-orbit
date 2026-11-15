@@ -33,12 +33,13 @@ internal sealed class StatusSnapshot
     public bool OffPeak { get; init; }
     public string? Hint { get; init; }
 
+    /// <summary>状态色：直接取 Fluent 令牌，跟随浅/深主题。</summary>
     public Color Accent => State switch
     {
-        DshState.Running => Color.FromArgb(63, 208, 138),
-        DshState.Starting => Color.FromArgb(240, 180, 41),
-        DshState.Error => Color.FromArgb(240, 90, 90),
-        _ => Color.FromArgb(120, 132, 152),
+        DshState.Running => Fluent.Success,
+        DshState.Starting => Fluent.Caution,
+        DshState.Error => Fluent.Critical,
+        _ => Fluent.TextTertiary,
     };
 
     public string StateText => State switch

@@ -16,17 +16,11 @@ internal sealed class WidgetForm : Form
     private const int Pad = 16;
 
     /// <summary>卡片四周留给阴影的透明外边距。</summary>
-    private const int ShadowMargin = 16;
+    private const int ShadowMargin = 26;
 
-    /// <summary>卡片圆角半径（96 DPI 下的像素）。</summary>
-    private const int CornerRadius = 30;
+    /// <summary>卡片圆角半径（WinUI 顶层容器 8px）。</summary>
+    private const int CornerRadius = 8;
 
-    private static readonly Color ButtonTop = Color.FromArgb(74, 140, 255);
-    private static readonly Color ButtonBottom = Color.FromArgb(38, 92, 220);
-
-    private static readonly StringFormat AlignLeft = CreateFormat(StringAlignment.Near, null);
-    private static readonly StringFormat AlignRight = CreateFormat(StringAlignment.Far, null);
-    private static readonly StringFormat AlignLeftEllipsis = CreateFormat(StringAlignment.Near, StringTrimming.EllipsisCharacter);
 
     private readonly WidgetConfig _config;
     private readonly ToolTip _tooltip = new();
@@ -61,14 +55,6 @@ internal sealed class WidgetForm : Form
     private int _animStep;
 
     private float _scale = 1f;
-    private Font _fontBody = null!;
-    private Font _fontLabel = null!;
-    private Font _fontChip = null!;
-    private Font _fontPill = null!;
-    private Font _fontHeadline = null!;
-    private Font _fontStatLabel = null!;
-    private Font _fontStat = null!;
-    private Font _fontMicro = null!;
 
     public event Action? StartStopRequested;
     public event Action? OpenRequested;
@@ -96,7 +82,6 @@ internal sealed class WidgetForm : Form
             ControlStyles.StandardDoubleClick,
             true);
 
-        CreateFonts();
         ApplyWindowSize();
 
         // 穿透时收不到鼠标消息，只能轮询光标位置来画「探照灯」。
@@ -113,6 +98,14 @@ internal sealed class WidgetForm : Form
 
             RenderSurface();
         };
+    }
+
+    private void OnThemeChanged()
+    {
+        if (!IsDisposed)
+        {
+            RenderSurface();
+        }
     }
 
     protected override bool ShowWithoutActivation => true;
@@ -147,7 +140,6 @@ internal sealed class WidgetForm : Form
     {
         base.OnDpiChanged(e);
         _scale = e.DeviceDpiNew / 96f;
-        CreateFonts();
         ApplyWindowSize();
         RenderSurface();
     }
@@ -167,34 +159,6 @@ internal sealed class WidgetForm : Form
         {
             Size = new Size(width, height);
         }
-    }
-
-    private void CreateFonts()
-    {
-        _scale = DeviceDpi / 96f;
-        float Px(float v) => v * _scale;
-
-        _fontBody?.Dispose();
-        _fontLabel?.Dispose();
-        _fontChip?.Dispose();
-        _fontPill?.Dispose();
-        _fontHeadline?.Dispose();
-        _fontStatLabel?.Dispose();
-        _fontStat?.Dispose();
-        _fontMicro?.Dispose();
-
-        var body = Ui.PickFamily("HarmonyOS Sans SC", Ui.PickFamily("HarmonyOS Sans", "Segoe UI"));
-        var medium = Ui.PickFamily("HarmonyOS Sans SC Medium", body);
-        var black = Ui.PickFamily("HarmonyOS Sans SC Black", medium);
-
-        _fontBody = new Font(body, Px(11), FontStyle.Regular, GraphicsUnit.Pixel);
-        _fontLabel = new Font(body, Px(12.5f), FontStyle.Regular, GraphicsUnit.Pixel);
-        _fontChip = new Font(body, Px(11.5f), FontStyle.Regular, GraphicsUnit.Pixel);
-        _fontPill = new Font(medium, Px(11.5f), FontStyle.Regular, GraphicsUnit.Pixel);
-        _fontHeadline = new Font(black, Px(28), FontStyle.Regular, GraphicsUnit.Pixel);
-        _fontStatLabel = new Font(body, Px(11), FontStyle.Regular, GraphicsUnit.Pixel);
-        _fontStat = new Font(medium, Px(15.5f), FontStyle.Regular, GraphicsUnit.Pixel);
-        _fontMicro = new Font(body, Px(10.5f), FontStyle.Regular, GraphicsUnit.Pixel);
     }
 
     public void SetStatus(StatusSnapshot status)
@@ -646,11 +610,10 @@ internal sealed class WidgetForm : Form
             g.CompositingQuality = CompositingQuality.HighQuality;
             g.InterpolationMode = InterpolationMode.HighQualityBicubic;
             // 只能用灰度抗锯齿：ClearType 在透明面上会出彩边，而 AntiAliasGridFit 在小字号上会直接关掉抗锯齿。
-            g.TextRenderingHint = TextRenderingHint.AntiAlias;
+            g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
 
             var state = g.Save();
             g.TranslateTransform(margin, margin);
-            DrawShadow(g, cardWidth, cardHeight);
             DrawCard(g, cardWidth, cardHeight);
             g.Restore(state);
         }
@@ -668,25 +631,6 @@ internal sealed class WidgetForm : Form
         }
 
         PushLayered(width, height);
-    }
-
-    /// <summary>卡片外面一圈柔和投影：多层同色低透明度圆角矩形堆出渐变。</summary>
-    private void DrawShadow(Graphics g, int width, int height)
-    {
-        var blur = (int)MathF.Round(12 * _scale);
-        if (blur <= 0)
-        {
-            return;
-        }
-
-        for (var i = blur; i >= 1; i--)
-        {
-            const int alpha = 5;
-            var rect = new RectangleF(-i, -i, width + (2 * i), height + (2 * i));
-            using var path = RoundedPath(rect, (CornerRadius * _scale) + i);
-            using var brush = new SolidBrush(Color.FromArgb(alpha, 0, 0, 0));
-            g.FillPath(brush, path);
-        }
     }
 
     protected override void OnPaint(PaintEventArgs e) => RenderSurface();
@@ -898,143 +842,133 @@ internal sealed class WidgetForm : Form
 
     // ---------------------------------------------------------------- 绘制
 
+    /// <summary>主操作按钮的文案/图标/角色。</summary>
+    private readonly record struct ActionSpec(string Label, string Icon, SurfaceRole Role);
+
     private void DrawCard(Graphics g, int width, int height)
     {
         _scale = DeviceDpi / 96f;
         int S(int v) => (int)MathF.Round(v * _scale);
         var pad = S(Pad);
-
         _hits.Clear();
 
-        var card = new RectangleF(0, 0, width, height);
-        using (var path = RoundedPath(card, S(CornerRadius)))
-        {
-            using var fill = new LinearGradientBrush(
-                new RectangleF(0, 0, width, height),
-                Color.FromArgb(26, 31, 42),
-                Color.FromArgb(11, 14, 20),
-                90f);
-            g.FillPath(fill, path);
+        Fluent.Card(g, new RectangleF(0, 0, width, height), S(CornerRadius), 3);
 
-            var buttonSize = S(78);
-            var buttonX = width - pad - buttonSize;
-            var buttonY = (height - buttonSize) / 2;
-            var center = new PointF(buttonX + (buttonSize / 2f), buttonY + (buttonSize / 2f));
+        var headerY = S(12);
+        var buttonW = S(84);
+        var buttonH = S(32);
 
-            g.SetClip(path, CombineMode.Intersect);
+        OrbitMark.Draw(g, new RectangleF(pad, headerY + S(8), S(16), S(16)), Fluent.AccentText, 2f);
+        Fluent.Text(g, "DSH-Orbit", TextRole.Body, true, Fluent.TextPrimary,
+            new RectangleF(pad + S(22), headerY, S(160), buttonH));
 
-            // 右侧装饰用的暗色圆斑
-            var decorRect = new RectangleF(center.X - S(160), center.Y - S(132), S(320), S(264));
-            using (var decor = new PathGradientBrush(BlobPath(decorRect, S(118))))
-            {
-                decor.CenterColor = Color.FromArgb(34, 0, 0, 0);
-                decor.SurroundColors = new[] { Color.FromArgb(0, 0, 0, 0) };
-                g.FillPath(decor, BlobPath(decorRect, S(118)));
-            }
+        var openRect = new RectangleF(width - pad - buttonW, headerY, buttonW, buttonH);
+        var primaryRect = new RectangleF(openRect.X - S(8) - buttonW, headerY, buttonW, buttonH);
+        var openRole = _status.State == DshState.Running ? SurfaceRole.Accent : SurfaceRole.Standard;
+        DrawAction(g, primaryRect, PrimaryAction(), "start");
+        DrawAction(g, openRect, new ActionSpec("打开", "external", openRole), "open");
 
-            // 按钮背后的柔光
-            var glowRect = new RectangleF(center.X - S(126), center.Y - S(126), S(252), S(252));
-            using (var glow = new PathGradientBrush(BlobPath(glowRect, S(100))))
-            {
-                glow.CenterColor = Color.FromArgb(64, ButtonTop);
-                glow.SurroundColors = new[] { Color.FromArgb(0, ButtonTop) };
-                g.FillPath(glow, BlobPath(glowRect, S(100)));
-            }
+        // 端口是整张卡片最重的一行（WinUI Title 28/36）
+        var portTop = S(52);
+        var portText = _status.Port is { } port ? $"127.0.0.1:{port}" : "未运行";
+        var portColor = _status.Port is null
+            ? Fluent.TextTertiary
+            : _hoverId == "open" ? Fluent.AccentText : Fluent.TextPrimary;
+        Fluent.Text(g, portText, TextRole.Title, true, portColor,
+            new RectangleF(pad, portTop, width - (2 * pad) - S(184), Fluent.LineHeight(TextRole.Title)),
+            StringAlignment.Near, StringTrimming.EllipsisCharacter, _scale);
 
-            g.ResetClip();
-        }
+        var portHit = Math.Min(
+            Fluent.Measure(g, portText, TextRole.Title, true, _scale) + S(8),
+            width - pad - S(8));
+        _hits.Add((new Rectangle(pad, portTop, (int)portHit, S(36)), "open"));
 
-        DrawHeader(g, S, pad);
-        DrawHeadline(g, S, pad, width);
-        DrawChips(g, S, pad);
-        DrawStats(g, S, pad, width);
-        DrawActionButton(g, S, width, height, pad);
-    }
+        // 状态药丸 + 元信息
+        var metaY = S(92);
+        var stateColor = StateColor();
+        var pillRect = new RectangleF(pad, metaY, S(78), S(20));
+        Fluent.Pill(g, pillRect, _status.StateText, stateColor,
+            Fluent.Mix(Fluent.Layer, stateColor, 0.18f), true, _scale);
 
-    private void DrawHeader(Graphics g, Func<int, int> S, int pad)
-    {
-        var iconRect = new Rectangle(pad, S(15), S(22), S(22));
-        using (var iconPath = RoundedPath(iconRect, S(7)))
-        {
-            using var iconBg = new SolidBrush(Color.FromArgb(18, 255, 255, 255));
-            g.FillPath(iconBg, iconPath);
-        }
-        Icons.Draw(g, "activity",
-            new RectangleF(iconRect.X + S(3), iconRect.Y + S(3), iconRect.Width - S(6), iconRect.Height - S(6)),
-            Color.FromArgb(220, _status.Accent),
-            2f);
-
-        var labelRect = new RectangleF(iconRect.Right + S(10), S(12), S(60), S(26));
-        DrawText(g, "状态", _fontLabel, Color.FromArgb(150, 161, 178), labelRect);
-
-        var labelWidth = MeasureText(g, "状态", _fontLabel);
-        var pillX = labelRect.X + labelWidth + S(10);
-        var pillText = _status.StateText;
-        var textWidth = MeasureText(g, pillText, _fontPill);
-        var pillRect = new Rectangle((int)pillX, S(15), (int)(textWidth + S(36)), S(22));
-
-        using (var pillPath = RoundedPath(pillRect, S(11)))
-        {
-            using var pillBg = new SolidBrush(Color.FromArgb(_status.State == DshState.Running ? 40 : 26, _status.Accent));
-            g.FillPath(pillBg, pillPath);
-        }
-
-        using (var dot = new SolidBrush(_status.Accent))
-        {
-            g.FillEllipse(dot, pillRect.X + S(11), pillRect.Y + (pillRect.Height / 2f) - S(3), S(6), S(6));
-        }
-
-        DrawText(g, pillText, _fontPill, _status.Accent,
-            new RectangleF(pillRect.X + S(23), pillRect.Y, pillRect.Width - S(26), pillRect.Height));
-
+        var metaX = pillRect.Right + S(10);
+        var metaRight = (float)(width - pad);
         if (_config.ClickThrough)
         {
-            var lockText = "已锁定";
-            var lockWidth = MeasureText(g, lockText, _fontChip);
-            var lockRect = new Rectangle(pillRect.Right + S(8), pillRect.Y, (int)(lockWidth + S(20)), pillRect.Height);
-            using var lockPath = RoundedPath(lockRect, S(11));
-            using var lockBg = new SolidBrush(Color.FromArgb(30, 240, 180, 41));
-            g.FillPath(lockBg, lockPath);
-            DrawText(g, lockText, _fontChip, Color.FromArgb(240, 180, 41), lockRect, StringAlignment.Center);
+            var lockRect = new RectangleF(metaRight - S(60), metaY, S(60), S(20));
+            Fluent.Pill(g, lockRect, "已锁定", Fluent.Caution,
+                Fluent.Mix(Fluent.Layer, Fluent.Caution, 0.16f), false, _scale);
+            _hits.Add((Rectangle.Round(lockRect), "lock"));
+            metaRight = lockRect.X - S(8);
         }
-    }
 
-    private void DrawHeadline(Graphics g, Func<int, int> S, int pad, int width)
-    {
-        var text = _status.Port is { } port ? $"127.0.0.1:{port}" : "未运行";
-        var color = _status.Port is not null ? Color.FromArgb(240, 244, 250) : Color.FromArgb(110, 122, 142);
-        if (_hoverId == "open" && _status.Port is not null)
+        Fluent.Text(g, MetaText(), TextRole.Caption, false, Fluent.TextSecondary,
+            new RectangleF(metaX, metaY, Math.Max(0, metaRight - metaX), S(20)),
+            StringAlignment.Near, StringTrimming.EllipsisCharacter, _scale);
+
+        Fluent.Divider(g, new RectangleF(pad, S(116), width - (2 * pad), 1));
+
+        // 三列统计：标签 12、数值 14 semibold
+        var labelY = S(124);
+        var valueY = S(142);
+        var columnWidth = (width - (2 * pad)) / 3f;
+        var columns = Stats();
+        for (var i = 0; i < columns.Length; i++)
         {
-            color = Color.FromArgb(124, 172, 255);
+            var (label, value, color) = columns[i];
+            var x = pad + (columnWidth * i);
+            Fluent.Text(g, label, TextRole.Caption, false, Fluent.TextTertiary,
+                new RectangleF(x, labelY, columnWidth - S(8), S(16)), StringAlignment.Near,
+                StringTrimming.None, _scale);
+            Fluent.Text(g, value, TextRole.Body, true, color,
+                new RectangleF(x, valueY, columnWidth - S(8), S(20)), StringAlignment.Near,
+                StringTrimming.EllipsisCharacter, _scale);
         }
-
-        var rect = new RectangleF(pad, S(38), width - pad - S(124), S(36));
-        DrawText(g, text, _fontHeadline, color, rect, StringAlignment.Near, AlignLeftEllipsis);
-
-        var textWidth = MeasureText(g, text, _fontHeadline);
-        var hitWidth = Math.Min(textWidth + S(8), width - pad - S(150));
-        _hits.Add((new Rectangle(pad, S(38), (int)hitWidth, S(36)), "open"));
     }
 
-    private void DrawChips(Graphics g, Func<int, int> S, int pad)
+    private void DrawAction(Graphics g, RectangleF rect, ActionSpec spec, string id)
     {
-        var x = (float)pad;
-        var y = 84;
+        var state = spec.Label == "启动中"
+            ? VisualState.Disabled
+            : _pressedId == id ? VisualState.Pressed
+            : _hoverId == id ? VisualState.Hover
+            : VisualState.Rest;
 
-        x = DrawChip(g, S, x, y, $"profile {_status.Profile}", withDot: true);
+        Fluent.Button(g, rect, spec.Label, spec.Role, state, spec.Icon, _scale);
+        _hits.Add((Rectangle.Round(rect), id));
+    }
+
+    private ActionSpec PrimaryAction() => _status.State switch
+    {
+        DshState.Running => new ActionSpec("停止", "square", SurfaceRole.Standard),
+        DshState.Starting => new ActionSpec("启动中", "pause", SurfaceRole.Standard),
+        _ => new ActionSpec("启动", "play", SurfaceRole.Accent),
+    };
+
+    private Color StateColor() => _status.State switch
+    {
+        DshState.Running => Fluent.Success,
+        DshState.Starting => Fluent.Caution,
+        DshState.Error => Fluent.Critical,
+        _ => Fluent.TextTertiary,
+    };
+
+    private string MetaText()
+    {
+        var parts = new List<string> { $"profile {_status.Profile}" };
         if (_status.PluginTotal is { } total)
         {
-            x = DrawChip(g, S, x, y,
-                _status.PluginDisabled is > 0 ? $"插件 {total} · 停 {_status.PluginDisabled}" : $"插件 {total}");
+            parts.Add(_status.PluginDisabled is > 0
+                ? $"插件 {total} · 停 {_status.PluginDisabled}"
+                : $"插件 {total}");
         }
         else if (_status.PluginScanning)
         {
-            x = DrawChip(g, S, x, y, "插件 统计中");
+            parts.Add("插件 统计中");
         }
 
         if (_status.Balance is not null)
         {
-            x = DrawChip(g, S, x, y, _status.OffPeak ? "闲时" : "标准价");
+            parts.Add(_status.OffPeak ? "闲时" : "标准价");
         }
 
         if (_status.State == DshState.Running && _status.MemoryBytes > 0)
@@ -1045,193 +979,21 @@ internal sealed class WidgetForm : Form
                 metrics += $" · {cpu:0}%";
             }
 
-            DrawText(g, metrics, _fontMicro, Color.FromArgb(110, 122, 142),
-                new RectangleF(x + S(4), S(y), S(120), S(22)));
-        }
-    }
-
-    private float DrawChip(Graphics g, Func<int, int> S, float x, int y, string text, bool withDot = false)
-    {
-        var textWidth = MeasureText(g, text, _fontChip);
-        var width = textWidth + S(withDot ? 36 : 24);
-        var rect = new Rectangle((int)x, S(y), (int)width, S(22));
-
-        using (var path = RoundedPath(rect, S(11)))
-        {
-            using var bg = new SolidBrush(Color.FromArgb(18, 255, 255, 255));
-            g.FillPath(bg, path);
+            parts.Add(metrics);
         }
 
-        if (withDot)
-        {
-            using var dot = new SolidBrush(Color.FromArgb(63, 208, 138));
-            g.FillEllipse(dot, rect.X + S(11), rect.Y + S(8), S(6), S(6));
-        }
-
-        DrawText(g, text, _fontChip, Color.FromArgb(188, 197, 212),
-            new RectangleF(rect.X + S(withDot ? 23 : 12), rect.Y, textWidth + S(4), rect.Height));
-
-        return rect.Right + S(8);
+        return string.Join(" · ", parts);
     }
 
-    private void DrawStats(Graphics g, Func<int, int> S, int pad, int width)
-    {
-        var columns = new (string Label, string Value, Color Color)[]
-        {
-            ("运行时长", _status.Uptime is { } up ? FormatUptime(up) : "—", Color.FromArgb(232, 238, 246)),
-            ("余额", _status.Balance is { } b ? $"¥{b:0.00}" : "—",
-                _status.Balance is not null ? Color.FromArgb(63, 208, 138) : Color.FromArgb(120, 132, 152)),
-            ("今日已用", _status.SpentToday is { } s && s > 0 ? $"¥{s:0.0000}" : "¥0.0000",
-                Color.FromArgb(188, 197, 212)),
-        };
-
-        var x = (float)pad;
-        var available = width - pad - S(124);
-        var step = Math.Max(S(104), available / columns.Length);
-
-        foreach (var column in columns)
-        {
-            DrawText(g, column.Label, _fontStatLabel, Color.FromArgb(122, 134, 155),
-                new RectangleF(x, S(120), step - S(8), S(16)));
-
-            DrawText(g, column.Value, _fontStat, column.Color,
-                new RectangleF(x, S(136), step - S(4), S(24)));
-
-            x += step;
-        }
-    }
-
-    private void DrawActionButton(Graphics g, Func<int, int> S, int width, int height, int pad)
-    {
-        var size = S(84);
-        var rect = new Rectangle(width - pad - size, (height - size) / 2, size, size);
-        var hovered = _hoverId == "start";
-
-        var running = _status.State is DshState.Running or DshState.Starting;
-        var top = hovered ? ControlPaint.Light(ButtonTop, 0.16f) : ButtonTop;
-        var bottom = hovered ? ControlPaint.Light(ButtonBottom, 0.16f) : ButtonBottom;
-
-        var glowRect = new RectangleF(rect.X - S(12), rect.Y - S(12), rect.Width + S(24), rect.Height + S(24));
-        using (var glow = new PathGradientBrush(BlobPath(glowRect, glowRect.Width / 2f)))
-        {
-            glow.CenterColor = Color.FromArgb(58, top);
-            glow.SurroundColors = new[] { Color.FromArgb(0, top) };
-            g.FillPath(glow, BlobPath(glowRect, glowRect.Width / 2f));
-        }
-
-        using (var path = new GraphicsPath())
-        {
-            path.AddEllipse(rect);
-            using var fill = new LinearGradientBrush(rect, top, bottom, 90f);
-            g.FillPath(fill, path);
-
-            using var inner = new Pen(Color.FromArgb(70, 255, 255, 255), 1.2f * _scale);
-            g.DrawEllipse(inner, Rectangle.Inflate(rect, -S(1), -S(1)));
-        }
-
-        var glyphSize = S(30);
-        Icons.Draw(
-            g,
-            running ? "pause" : "play",
-            new RectangleF(
-                rect.X + ((rect.Width - glyphSize) / 2f),
-                rect.Y + ((rect.Height - glyphSize) / 2f),
-                glyphSize,
-                glyphSize),
-            Color.FromArgb(245, 250, 255),
-            2f);
-
-        _hits.Add((rect, "start"));
-    }
-
-    // ---------------------------------------------------------------- 绘图工具
-
-    private static StringFormat CreateFormat(StringAlignment alignment, StringTrimming? trimming)
-    {
-        var format = (StringFormat)StringFormat.GenericTypographic.Clone();
-        format.Alignment = alignment;
-        format.LineAlignment = StringAlignment.Center;
-        format.FormatFlags = StringFormatFlags.NoWrap;
-        if (trimming is { } value)
-        {
-            format.Trimming = value;
-        }
-
-        return format;
-    }
-
-    /// <summary>用 GDI+ 画文字：位图有 alpha 通道，GDI 的 TextRenderer 会留下锯齿。</summary>
-    private static void DrawText(
-        Graphics g,
-        string text,
-        Font font,
-        Color color,
-        RectangleF rect,
-        StringAlignment alignment = StringAlignment.Near,
-        StringFormat? format = null)
-    {
-        using var brush = new SolidBrush(color);
-        var effective = format ?? (alignment == StringAlignment.Far ? AlignRight
-            : alignment == StringAlignment.Center ? CreateFormat(StringAlignment.Center, null)
-            : AlignLeft);
-        g.DrawString(text, font, brush, rect, effective);
-    }
-
-    private static float MeasureText(Graphics g, string text, Font font) =>
-        g.MeasureString(text, font, PointF.Empty, StringFormat.GenericTypographic).Width;
-
-    private static GraphicsPath RoundedPath(Rectangle rect, float radius)
-    {
-        var path = new GraphicsPath();
-        var d = Math.Min(radius * 2, Math.Min(rect.Width, rect.Height));
-        var arc = new RectangleF(rect.X, rect.Y, d, d);
-        path.AddArc(arc, 180, 90);
-        arc.X = rect.Right - d;
-        path.AddArc(arc, 270, 90);
-        arc.Y = rect.Bottom - d;
-        path.AddArc(arc, 0, 90);
-        arc.X = rect.X;
-        path.AddArc(arc, 90, 90);
-        path.CloseFigure();
-        return path;
-    }
-
-    private static GraphicsPath RoundedPath(RectangleF rect, float radius)
-    {
-        var path = new GraphicsPath();
-        var d = Math.Min(radius * 2, Math.Min(rect.Width, rect.Height));
-        var arc = new RectangleF(rect.X, rect.Y, d, d);
-        path.AddArc(arc, 180, 90);
-        arc.X = rect.Right - d;
-        path.AddArc(arc, 270, 90);
-        arc.Y = rect.Bottom - d;
-        path.AddArc(arc, 0, 90);
-        arc.X = rect.X;
-        path.AddArc(arc, 90, 90);
-        path.CloseFigure();
-        return path;
-    }
-
-    /// <summary>带轻微起伏的圆形轮廓，模仿参考卡片右侧的装饰圆斑。</summary>
-    private static GraphicsPath BlobPath(RectangleF rect, float radius)
-    {
-        var path = new GraphicsPath();
-        var center = new PointF(rect.X + (rect.Width / 2f), rect.Y + (rect.Height / 2f));
-        const int segments = 72;
-        var points = new PointF[segments];
-
-        for (var i = 0; i < segments; i++)
-        {
-            var angle = i * MathF.Tau / segments;
-            var wobble = 1f + (0.035f * MathF.Sin(angle * 3f)) + (0.02f * MathF.Sin((angle * 5f) + 1.1f));
-            var r = radius * wobble;
-            points[i] = new PointF(center.X + (r * MathF.Cos(angle)), center.Y + (r * MathF.Sin(angle)));
-        }
-
-        path.AddPolygon(points);
-        return path;
-    }
-
+    private (string Label, string Value, Color Color)[] Stats() =>
+    [
+        ("运行时长", _status.Uptime is { } up ? FormatUptime(up) : "—",
+            _status.Uptime is null ? Fluent.TextTertiary : Fluent.TextPrimary),
+        ("余额", _status.Balance is { } balance ? $"¥{balance:0.00}" : "—",
+            _status.Balance is null ? Fluent.TextTertiary : Fluent.Success),
+        ("今日已用", _status.SpentToday is { } spent && spent > 0 ? $"¥{spent:0.0000}" : "¥0.0000",
+            Fluent.TextSecondary),
+    ];
     private static string FormatUptime(TimeSpan span)
     {
         if (span < TimeSpan.Zero)
@@ -1263,14 +1025,6 @@ internal sealed class WidgetForm : Form
             _cursorTimer.Dispose();
             _surface?.Dispose();
             ReleaseDib();
-            _fontBody?.Dispose();
-            _fontLabel?.Dispose();
-            _fontChip?.Dispose();
-            _fontPill?.Dispose();
-            _fontHeadline?.Dispose();
-            _fontStatLabel?.Dispose();
-            _fontStat?.Dispose();
-            _fontMicro?.Dispose();
         }
 
         base.Dispose(disposing);
