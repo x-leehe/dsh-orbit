@@ -687,21 +687,14 @@ internal sealed class WebShell : Form
         _tabStripTop = rowY;
         LayoutTabs();
 
-        // 工具条：地址栏左边缘和标签条对齐（不要横贯整窗），右留 12；高 30，上下各留 3。
-        // 刷新 / 在浏览器打开两个按钮在地址栏内部右侧，地址文字让出它们的宽度。
-        var fieldLeft = S(12);
-        var fieldRight = width - S(12);
-        _addressChrome = new Rectangle(
-            fieldLeft,
-            S(3),
-            Math.Max(S(120), fieldRight - fieldLeft),
-            S(30));
+        // 工具条：扁平地址行——没有输入框的外框/圆角，整行都是可点击区。
+        _addressChrome = new Rectangle(0, 0, width, toolHeight);
 
         var fieldButton = S(26);
-        var fieldPad = S(6);
+        var fieldPad = S(8);
         _externalRect = new Rectangle(
-            _addressChrome.Right - fieldPad - fieldButton,
-            _addressChrome.Y + ((_addressChrome.Height - fieldButton) / 2),
+            width - fieldPad - fieldButton,
+            (toolHeight - fieldButton) / 2,
             fieldButton,
             fieldButton);
         _refreshRect = new Rectangle(
@@ -711,11 +704,11 @@ internal sealed class WebShell : Form
             fieldButton);
 
         var preferred = _address.PreferredHeight;
-        var textLeft = _addressChrome.X + S(12);
+        var textLeft = S(12);
         var textRight = _refreshRect.X - S(8);
         _address.Bounds = new Rectangle(
             textLeft,
-            _addressChrome.Y + Math.Max(0, (_addressChrome.Height - preferred) / 2),
+            Math.Max(0, (toolHeight - preferred) / 2),
             Math.Max(S(40), textRight - textLeft),
             preferred);
 
@@ -919,16 +912,17 @@ internal sealed class WebShell : Form
         Fluent.Fill(g, new RectangleF(0, 0, width, height), Fluent.Mica);
         Fluent.HairLine(g, 0, height - 1, width);
 
-        Fluent.TextBox(
-            g,
-            new RectangleF(_addressChrome.X, _addressChrome.Y, _addressChrome.Width, _addressChrome.Height),
-            null,
-            null,
-            _address.Focused,
-            _addressHover,
-            _scale,
-            Fluent.RCard,
-            12f);
+        // 扁平地址行：悬停/聚焦只改底色，不画外框和圆角。
+        if (_address.Focused)
+        {
+            Fluent.Fill(g, new RectangleF(0, 0, width, height), Fluent.ControlFill);
+            var underline = new RectangleF(S(12), height - (2 * _scale), Math.Max(0, width - S(24)), 2 * _scale);
+            Fluent.Fill(g, underline, Fluent.AccentFill);
+        }
+        else if (_addressHover)
+        {
+            Fluent.Fill(g, new RectangleF(0, 0, width, height), Fluent.Mix(Fluent.Mica, Fluent.HoverLayer, 0.5f));
+        }
 
         // 刷新 / 在浏览器打开：画在地址框内部右侧，悬停时叠 8% 状态层。
         var iconSize = 16f * _scale;
@@ -1109,7 +1103,10 @@ internal sealed class WebShell : Form
         ApplyFluentChrome();
     }
 
-    private Color AddressFill => _addressHover ? Fluent.ControlFillHover : Fluent.ControlFill;
+    /// <summary>地址行是扁平的：默认和工具条同色，只有悬停/聚焦才提亮。</summary>
+    private Color AddressFill => _address.Focused
+        ? Fluent.ControlFill
+        : _addressHover ? Fluent.Mix(Fluent.Mica, Fluent.HoverLayer, 0.5f) : Fluent.Mica;
 
     /// <summary>把 Fluent 令牌应用到窗口与所有子控件，然后整窗重画。</summary>
     private void ApplyFluentChrome()

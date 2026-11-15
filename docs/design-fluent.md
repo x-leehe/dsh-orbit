@@ -167,8 +167,9 @@ new Ripple().Begin(point) + Ripple.Draw(g, bounds, radius, tint)
 - 关闭按钮 14px 图标，仅悬停/激活时显示
 - `+` 为 32×32 图标按钮，跟在最后一个标签后面（放不下时钉在标签区最右）
 - 红绿灯：保留 macOS 语义与顺序（最小化 → 最大化 → 关闭），命中区 32×32，悬停加 8% 状态层，颜色 `Caution` / `Success` / `Critical`
-- 地址框：**30 高、8 圆角**（字段是「卡片级」元素，比按钮大一档圆角才不会读成分隔带）、左右各 12 内边距、文字内边距 12；
-  `刷新` `在浏览器打开` 是地址框内部的 26×26 图标按钮（8% 状态层），地址文字让出它们的宽度
+- 地址行：**扁平行，没有外框、没有圆角、没有底板**——文字（12px 内边距）和两个 26×26 图标按钮直接坐在工具条上；
+  悬停时整行提亮一档（`Mix(Mica, HoverLayer, 0.5)`），聚焦时换上 `ControlFill` 并在整行底部画 2px 强调线；
+  整行都是可点击的编辑区，工具条与内容之间靠 1px `Divider` 分隔
 - 收起按钮：`chevron-up` / `chevron-down`，收起时工具条高度 0、网页区域向上填满；状态存 `shell.json` 的 `AddressCollapsed`；`Ctrl+L` 会先展开再聚焦
 - 窗口：`DWMWA_USE_IMMERSIVE_DARK_MODE` 跟随主题，圆角走 DWM
 
