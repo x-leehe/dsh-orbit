@@ -1,0 +1,70 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    DSH-Orbit 安装程序（自研，7-Zip 那种极简单窗口风格）。
+
+    发布：
+      dotnet publish installer\Setup.csproj -c Release -o installer\dist
+
+    主程序作为嵌入资源 payload.app 打进安装器；默认取仓库的 dist\DSH-Orbit.exe，
+    也可以在命令行用 -p:PayloadPath=<exe 路径> 覆盖。
+  -->
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <AssemblyName>DSH-Orbit-Setup</AssemblyName>
+    <RootNamespace>DshOrbit.Setup</RootNamespace>
+    <Product>DSH-Orbit</Product>
+    <AssemblyTitle>DSH-Orbit 安装程序</AssemblyTitle>
+    <Company>x-leehe</Company>
+    <!-- 与主程序同一个版本号；界面右上角的「安装程序 · 版本」从这里读。 -->
+    <Version>0.3.0</Version>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\app.ico</ApplicationIcon>
+
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <DebugType>none</DebugType>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+
+    <!-- 主程序 exe 的路径（作为 EmbeddedResource 嵌入为 payload.app）。 -->
+    <PayloadPath Condition="'$(PayloadPath)'==''">..\dist\DSH-Orbit.exe</PayloadPath>
+
+    <!-- 只显式包含下面这些源文件，避免把 installer\ 里的临时脚本之类编进来。 -->
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="*.cs" />
+    <Compile Include="..\Fluent.cs" />
+    <Compile Include="..\FluentControls.cs" />
+    <Compile Include="..\Icons.cs" />
+    <Compile Include="..\LucideData.cs" />
+    <Compile Include="..\SvgPath.cs" />
+    <Compile Include="..\OrbitMark.cs" />
+    <!-- OrbitMark 用 DshMark 画鲸鱼标，必须一起编译。 -->
+    <Compile Include="..\DshMark.cs" />
+
+    <!-- 缺失 payload 时构建仍成功，运行时会给出「安装包不完整」的友好提示。 -->
+    <EmbeddedResource Include="$(PayloadPath)" LogicalName="payload.app" Condition="Exists('$(PayloadPath)')" />
+  </ItemGroup>
+
+  <!-- 构建时把 payload 的体积/存在性写进日志，便于排查「安装器没带主程序」的问题。 -->
+  <Target Name="ReportPayload" BeforeTargets="Build">
+    <Message Importance="high" Text="DSH-Orbit-Setup payload: $(PayloadPath)" Condition="Exists('$(PayloadPath)')" />
+    <Message Importance="high" Text="DSH-Orbit-Setup payload: 未找到 $(PayloadPath)（安装器将提示安装包不完整）" Condition="!Exists('$(PayloadPath)')" />
+  </Target>
+
+</Project>

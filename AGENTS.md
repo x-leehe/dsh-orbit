@@ -57,6 +57,22 @@ dotnet run --project tests/Render -c Release -- artifacts/gallery --only menu
 - 控件级 Fluent 包装（对话框用）：`FluentButton`、`FluentTextBox`（`FluentControls.cs`）。
 - 视觉验收：`RenderPreview.exe artifacts\gallery` 渲染 **浅色/深色 × 全部界面**，逐张比对规范。
 
+## 安装器与卸载（installer/ + Uninstall.cs）
+
+安装器是**自研**的，不要引入 Inno Setup / NSIS / WiX / MSI：
+
+- `installer/` 是独立工程，`DshOrbit.csproj` 里已 `Compile Remove="installer\**"`；
+  否则会冒出「多个入口点」的编译错误。
+- 安装器把主程序当 **embedded resource**（`payload.app`）打进自己，payload 默认
+  `..\dist\DSH-Orbit.exe`——**必须用自带运行时那个 47 MB 版本**，不能用 `dist-lite`，
+  不然没装 .NET 的机器装完跑不起来。CI 里有长度断言守着这一点。
+- 安装器自身也是 `SelfContained + PublishSingleFile`，所以 Setup 约 94 MB（运行时 47 + payload 47）。
+- 卸载逻辑在**主程序** `Uninstall.cs`（`DSH-Orbit.exe --uninstall`），安装器只把
+  `UninstallString` 指过去。默认**保留**用户数据，只有交互式勾选或 `/REMOVEDATA` 才删；
+  `RemoveData` 里有护栏：数据目录不能等于/包含安装目录。
+- 便携模式约定：exe 同目录有 `portable.txt` **或** `data\`，`AppPaths` 就把数据写到 `data\`
+  （见 `Models.cs` 的 `ResolveRoot`）。
+
 ## 可空引用
 
 工程开启了 `<WarningsAsErrors>nullable</WarningsAsErrors>`：任何 CS86xx 可空警告都会直接编译失败，

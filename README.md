@@ -86,18 +86,37 @@
 
 | 文件 | 大小 | 依赖 |
 | --- | --- | --- |
-| `DSH-Orbit.exe` | ~47 MB | 自带 .NET 运行时，拷走就能跑 |
-| `DSH-Orbit-lite.exe` | ~1.4 MB | 需要 [.NET 10 桌面运行时](https://dotnet.microsoft.com/download/dotnet/10.0) |
+| `DSH-Orbit-Setup.exe` | ~94 MB | **推荐**。安装器，**不需要预装 .NET** |
+| `DSH-Orbit.exe` | ~47 MB | 绿色单文件，自带 .NET 运行时，拷走就能跑 |
+| `DSH-Orbit-lite.exe` | ~1.5 MB | 需要 [.NET 10 桌面运行时](https://dotnet.microsoft.com/download/dotnet/10.0) |
 
-两者都还需要系统装有 **WebView2 运行时**（Win10/11 一般自带）。
+三者都还需要系统装有 **WebView2 运行时**（Win10/11 一般自带）。
 
 双击启动挂件；`DSH-Orbit.exe --show-window` 会连 Web 窗口一起打开。
+
+## 安装
+
+`DSH-Orbit-Setup.exe` 是自研的 7-Zip 风格安装器：**一个窗口、一张脸**，没有向导页，也不用 Inno Setup / NSIS / MSI。
+
+<img src="docs/setup.png" width="520"/>
+
+- **安装到**：任意目录，带「浏览…」
+- **三档范围**
+  - 仅为我安装：`%LOCALAPPDATA%\Programs\DSH-Orbit`，不弹 UAC，注册表写 HKCU
+  - 为所有用户安装：`C:\Program Files\DSH-Orbit`（若已有 `Program Files (x86)\DSH-Orbit` 就沿用它），需要管理员
+  - 便携模式：只解压，不写注册表、不建快捷方式，数据存在 exe 旁边的 `data\`
+- **快捷方式**：桌面 / 开始菜单，各一个勾选框
+- **软件索引**：写入「应用和功能」（`Uninstall\DSH-Orbit`）和 `RegisteredApplications`，卸载时一并清除
+- **静默安装**（给脚本/批量部署用）：`DSH-Orbit-Setup.exe /S /MODE=user /NODESKTOP /NOSTART /D=D:\Apps\DSH-Orbit`
+
+卸载走「应用和功能」，或 `DSH-Orbit.exe --uninstall`；默认**保留**配置与访问历史，勾选后才删。
 
 ## 命令行
 
 ```powershell
 DSH-Orbit --show-window   # 保证挂件在跑 + dsh web 在跑 + Web 窗口在前台
 DSH-Orbit                 # 不带参数 = 只启动挂件卡片
+DSH-Orbit --uninstall     # 卸载（应用和功能里的卸载项也指向这里）
 ```
 
 只有一个进程：已运行时再调用只会通过命名管道通知已有实例，然后退出。

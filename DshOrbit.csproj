@@ -10,6 +10,10 @@
     <AssemblyName>DSH-Orbit</AssemblyName>
     <Product>DSH-Orbit</Product>
     <AssemblyTitle>DSH-Orbit</AssemblyTitle>
+    <!-- 版本：安装器与「应用和功能」里的 DisplayVersion 都从这里读 -->
+    <Version>0.3.0</Version>
+    <FileVersion>0.3.0.0</FileVersion>
+    <InformationalVersion>0.3.0</InformationalVersion>
     <Company>DSH-Orbit</Company>
     <RootNamespace>DshOrbit</RootNamespace>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
@@ -48,12 +52,16 @@
     <Compile Remove="tests\**\*.cs" />
     <Compile Remove="launcher\**\*.cs" />
     <Compile Remove="tools\**\*.cs" />
+    <!-- installer/ 是独立的安装器工程，不能编进主程序（否则多入口点） -->
+    <Compile Remove="installer\**\*.cs" />
     <EmbeddedResource Remove="tests\**\*" />
     <EmbeddedResource Remove="launcher\**\*" />
     <EmbeddedResource Remove="tools\**\*" />
+    <EmbeddedResource Remove="installer\**\*" />
     <None Remove="tests\**\*" />
     <None Remove="launcher\**\*" />
     <None Remove="tools\**\*" />
+    <None Remove="installer\**\*" />
   </ItemGroup>
 
 </Project>

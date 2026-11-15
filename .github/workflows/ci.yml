@@ -45,6 +45,19 @@ jobs:
             -o dist
           Remove-Item dist\*.xml -Force -ErrorAction SilentlyContinue
 
+      - name: Build installer (embeds the self-contained build)
+        run: |
+          $payload = Get-Item dist\DSH-Orbit.exe
+          if ($payload.Length -lt 10MB) { throw "安装器 payload 必须自带运行时（dist 那个 47MB 的），实际只有 $($payload.Length) 字节" }
+          dotnet publish installer/Setup.csproj -c Release -o setup-dist -p:PayloadPath=dist\DSH-Orbit.exe
+          Copy-Item setup-dist\DSH-Orbit-Setup.exe .\DSH-Orbit-Setup.exe
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DSH-Orbit-Setup
+          path: DSH-Orbit-Setup.exe
+
       - name: Upload framework-dependent artifact
         uses: actions/upload-artifact@v4
         with:

@@ -7,6 +7,15 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        ApplicationConfiguration.Initialize();
+
+        // 安装器写进「应用和功能」的卸载命令指向这里。
+        if (HasFlag(args, "--uninstall"))
+        {
+            Uninstaller.Run(args);
+            return;
+        }
+
         var wantsShowWindow = HasFlag(args, "--show-window") || HasFlag(args, "--open-web");
         var wantsFullAuto = HasFlag(args, "--autostart-full");
 
@@ -31,7 +40,6 @@ internal static class Program
         Startup.OpenWebOnStart = wantsShowWindow;
         Startup.AutoStartDsh = wantsFullAuto;
 
-        ApplicationConfiguration.Initialize();
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
         Application.ThreadException += (_, e) => AppPaths.Log($"未处理异常：{e.Exception}");
 

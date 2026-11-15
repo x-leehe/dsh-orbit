@@ -169,6 +169,21 @@ internal static class AppPaths
     /// <summary>DSH-Orbit 的数据目录；首次升级时把旧的 DshStatusWidget 目录整体搬过来。</summary>
     private static string ResolveRoot()
     {
+        // 便携模式（安装器写入 portable.txt 或 data 目录）：数据跟着 exe 走，不碰 %LOCALAPPDATA%。
+        try
+        {
+            var exeDir = AppContext.BaseDirectory;
+            if (File.Exists(Path.Combine(exeDir, "portable.txt")) ||
+                Directory.Exists(Path.Combine(exeDir, "data")))
+            {
+                return Path.Combine(exeDir, "data");
+            }
+        }
+        catch
+        {
+            // 取不到 exe 目录就退回常规路径。
+        }
+
         var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         var target = Path.Combine(local, "DSH-Orbit");
         var legacy = Path.Combine(local, "DshStatusWidget");

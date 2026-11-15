@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  安装程序自身的清单：asInvoker。
+  选「为所有用户安装」时由程序自己用 Process.Start(Verb="runas") 提权，
+  而不是让整个安装器一开始就要管理员（这样「仅为我安装 / 便携模式」永远不需要 UAC）。
+
+  高 DPI 不写在清单里：由 Setup.csproj 的 ApplicationHighDpiMode=PerMonitorV2 通过
+  Application.SetHighDpiMode 配置（WinForms 对清单里的 dpiAware 会报 WFO0003）。
+-->
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <assemblyIdentity version="1.0.0.0" name="DSH-Orbit-Setup.app" />
+
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 10 / 11 -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
+    </application>
+  </compatibility>
+</assembly>
