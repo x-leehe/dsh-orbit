@@ -258,7 +258,7 @@ internal sealed class DshProcessHost : IDisposable
         var exe = LocateDshExe(config);
         if (exe is null)
         {
-            error = "找不到 dsh.exe（可在 config.json 里设置 DshExePath）";
+            error = "未找到 dsh：请先安装 dsh，或手动在终端运行 dsh web";
             LastError = error;
             return false;
         }

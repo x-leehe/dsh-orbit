@@ -238,8 +238,19 @@ internal static class Program
             OffPeak = true,
         };
 
+        var missing = new StatusSnapshot
+        {
+            State = DshState.Stopped,
+            Profile = "web",
+            PluginTotal = null,
+            Hint = "未找到 dsh：请先安装 dsh，或手动运行 dsh web",
+            Balance = 24.45m,
+            SpentToday = 0.6400m,
+        };
+
         Save(form, running, Path.Combine(outputDir, $"preview-running-{suffix}.png"));
         Save(form, stopped, Path.Combine(outputDir, $"preview-stopped-{suffix}.png"));
+        Save(form, missing, Path.Combine(outputDir, $"preview-missing-{suffix}.png"));
         form.Close();
     }
 

@@ -935,7 +935,12 @@ internal sealed class WidgetForm : Form
             metaRight = lockRect.X - S(8);
         }
 
-        Fluent.Text(g, MetaText(), TextRole.Caption, false, Fluent.TextSecondary,
+        // 有 hint（启动失败 / 未安装 dsh / 等待监听）时优先显示它，并用警示色——
+        // 否则这些信息只剩一个 4 秒的托盘气泡，用户根本看不到。
+        var hasHint = !string.IsNullOrWhiteSpace(_status.Hint);
+        var metaText = hasHint ? _status.Hint! : MetaText();
+        Fluent.Text(g, metaText, TextRole.Caption, false,
+            hasHint ? Fluent.Caution : Fluent.TextSecondary,
             new RectangleF(metaX, metaY, Math.Max(0, metaRight - metaX), S(20)),
             StringAlignment.Near, StringTrimming.EllipsisCharacter, _scale);
 

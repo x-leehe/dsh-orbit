@@ -137,6 +137,12 @@ internal sealed class WidgetApp : ApplicationContext
         _balanceTimer.Tick += (_, _) => _ = RefreshBalanceAsync();
         _balanceTimer.Start();
 
+        // 本机压根没有 dsh 时，先把话说明白（卡片上会显示这行 hint）。
+        if (DshProcessHost.LocateDshExe(_config) is null)
+        {
+            _hint = "未找到 dsh：请先安装 dsh，或手动运行 dsh web";
+        }
+
         Tick();
         _ = RefreshProbeAsync();
 
@@ -520,6 +526,12 @@ internal sealed class WidgetApp : ApplicationContext
         _starting = true;
         _startedAt = DateTime.Now;
         _hint = "等待 dsh 监听端口…";
+        // 本机压根没有 dsh 时，先把话说明白（卡片上会显示这行 hint）。
+        if (DshProcessHost.LocateDshExe(_config) is null)
+        {
+            _hint = "未找到 dsh：请先安装 dsh，或手动运行 dsh web";
+        }
+
         Tick();
         _ = RefreshProbeAsync();
     }

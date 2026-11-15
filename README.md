@@ -80,6 +80,15 @@
 - 键盘操作：↑↓ 移动、Enter 触发、Esc 关闭
 - 锁定穿透、贴边隐藏、外壳关闭行为、复制登录地址、打开日志
 
+## 前置条件
+
+本程序**不包含 dsh 本体**，只是它的客户端，所以需要先让它那边的 `dsh web` 能跑起来：
+
+- 用 `bun` / `npm` 全局安装 DSH 都行；程序会自动在 `PATH`、`~\.bun\bin`、`%APPDATA%\npm` 里找 `dsh.exe` / `dsh.cmd`；
+- 找不到时，**卡片上会直接显示提示**（不是一闪而过的通知），也可以在 `config.json` 的 `DshExePath` 里写死路径；
+- 如果 `dsh.cmd` 还在但 Node/Bun 被卸载了，进程会启动即退出，错误在 `%LOCALAPPDATA%\DSH-Orbit\logs\dsh-*.log`；
+- 另外需要 **WebView2 运行时**（Win10/11 一般自带）。
+
 ## 下载
 
 从 [Releases](https://github.com/x-leehe/dsh-orbit/releases) 下载：
