@@ -91,11 +91,14 @@ internal sealed class WebShell : Form
     private bool _loading;
     private float _spinAngle;
     private readonly System.Windows.Forms.Timer _spinTimer = new() { Interval = 33 };
-    private readonly System.Windows.Forms.Timer _addressTimer = new() { Interval = 16 };
+    private readonly System.Windows.Forms.Timer _addressTimer = new() { Interval = 15 };
+    private long _addressAnimStart;
     private int _addressAnimFrom;
     private int _addressAnimTo;
-    private int _addressAnimStep;
     private bool _addressAnimating;
+
+    /// <summary>收起/展开的动画时长（ms）。</summary>
+    private const int AddressAnimMs = 240;
 
     public WebShell(string url, ShellCloseMode closeMode)
     {
@@ -1005,16 +1008,25 @@ internal sealed class WebShell : Form
             Fluent.Fill(g, new RectangleF(0, 0, width, height), Fluent.Mix(Fluent.Mica, Fluent.HoverLayer, 0.5f));
         }
 
-        // 非编辑态：自绘站点图标 + 弱化的 scheme + 地址；编辑态由原生输入框自己画。
-        if (!_addressEditing)
+        // 收起/展开过程中，内容跟着高度淡入淡出；纯几何收缩看起来会像匀速平移。
+        var opacity = 1f;
+        if (_addressAnimating)
         {
-            DrawAddressDisplay(g, width, height);
+            var full = Math.Max(1f, S(ToolbarHeight));
+            opacity = Math.Clamp(height / full, 0f, 1f);
+        }
+
+        // 非编辑态：自绘站点图标 + 弱化的 scheme + 地址；编辑态由原生输入框自己画。
+        if (!_addressEditing && opacity > 0.02f)
+        {
+            DrawAddressDisplay(g, width, height, opacity);
         }
 
         var iconSize = 16f * _scale;
         var refreshState = _hoverFieldButton == 1 ? VisualState.Hover : VisualState.Rest;
         var externalState = _hoverFieldButton == 2 ? VisualState.Hover : VisualState.Rest;
 
+        var iconAlpha = opacity;
         if (_loading)
         {
             if (_hoverFieldButton == 1)
@@ -1023,20 +1035,20 @@ internal sealed class WebShell : Form
                 Fluent.Fill(g, plate, Fluent.HoverLayer);
             }
 
-            DrawLoadingSpinner(g, _refreshRect);
+            DrawLoadingSpinner(g, _refreshRect, iconAlpha);
         }
         else
         {
             Fluent.IconButton(g, _refreshRect, "refresh", refreshState, iconSize,
-                refreshState == VisualState.Hover ? Fluent.TextPrimary : Fluent.TextSecondary);
+                Fluent.WithAlpha(refreshState == VisualState.Hover ? Fluent.TextPrimary : Fluent.TextSecondary, iconAlpha));
         }
 
         Fluent.IconButton(g, _externalRect, "external", externalState, iconSize,
-            externalState == VisualState.Hover ? Fluent.TextPrimary : Fluent.TextSecondary);
+            Fluent.WithAlpha(externalState == VisualState.Hover ? Fluent.TextPrimary : Fluent.TextSecondary, iconAlpha));
     }
 
     /// <summary>地址行显示态：站点图标 + 三级文字的 scheme + 主文字的其余部分。</summary>
-    private void DrawAddressDisplay(Graphics g, int width, int height)
+    private void DrawAddressDisplay(Graphics g, int width, int height, float opacity = 1f)
     {
         var scale = _scale;
         var iconSize = 16f * scale;
@@ -1049,13 +1061,25 @@ internal sealed class WebShell : Form
         {
             var state = g.Save();
             g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-            g.DrawImage(icon, iconRect);
+            if (opacity < 0.99f)
+            {
+                using var attributes = new System.Drawing.Imaging.ImageAttributes();
+                var matrix = new System.Drawing.Imaging.ColorMatrix { Matrix33 = opacity };
+                attributes.SetColorMatrix(matrix);
+                var dest = Rectangle.Round(iconRect);
+                g.DrawImage(icon, dest, 0, 0, icon.Width, icon.Height, GraphicsUnit.Pixel, attributes);
+            }
+            else
+            {
+                g.DrawImage(icon, iconRect);
+            }
+
             g.Restore(state);
         }
         else
         {
             // 新标签页 / 没有图标：用中性的窗口图标（16px 下品牌标会糊成一团）
-            Icons.Draw(g, "app-window", iconRect, Fluent.TextTertiary, 1.8f * scale);
+            Icons.Draw(g, "app-window", iconRect, Fluent.WithAlpha(Fluent.TextTertiary, opacity), 1.8f * scale);
         }
 
         var textLeft = left + iconSize + S(8);
@@ -1066,7 +1090,7 @@ internal sealed class WebShell : Form
         var url = tab?.Url ?? string.Empty;
         if (string.IsNullOrEmpty(url) || url == "dsh://start")
         {
-            Fluent.Text(g, AddressPlaceholder, font, Fluent.TextTertiary, textRect);
+            Fluent.Text(g, AddressPlaceholder, font, Fluent.WithAlpha(Fluent.TextTertiary, opacity), textRect);
             return;
         }
 
@@ -1074,7 +1098,7 @@ internal sealed class WebShell : Form
         var schemeEnd = url.IndexOf("://", StringComparison.Ordinal);
         if (schemeEnd <= 0)
         {
-            Fluent.Text(g, url, font, Fluent.TextPrimary, textRect,
+            Fluent.Text(g, url, font, Fluent.WithAlpha(Fluent.TextPrimary, opacity), textRect,
                 StringAlignment.Near, StringTrimming.EllipsisCharacter);
             return;
         }
@@ -1082,7 +1106,7 @@ internal sealed class WebShell : Form
         var scheme = url[..(schemeEnd + 3)];
         var rest = url[(schemeEnd + 3)..];
         var schemeWidth = Fluent.Measure(g, scheme, font);
-        Fluent.Text(g, scheme, font, Fluent.TextTertiary, textRect);
+        Fluent.Text(g, scheme, font, Fluent.WithAlpha(Fluent.TextTertiary, opacity), textRect);
         if (rest.Length > 0)
         {
             var restRect = new RectangleF(
@@ -1090,19 +1114,19 @@ internal sealed class WebShell : Form
                 textRect.Y,
                 Math.Max(0f, textRect.Width - schemeWidth),
                 textRect.Height);
-            Fluent.Text(g, rest, font, Fluent.TextSecondary, restRect,
+            Fluent.Text(g, rest, font, Fluent.WithAlpha(Fluent.TextSecondary, opacity), restRect,
                 StringAlignment.Near, StringTrimming.EllipsisCharacter);
         }
     }
 
     /// <summary>加载中：刷新按钮的位置画一段旋转的弧。</summary>
-    private void DrawLoadingSpinner(Graphics g, RectangleF rect)
+    private void DrawLoadingSpinner(Graphics g, RectangleF rect, float opacity = 1f)
     {
         var state = g.Save();
         Fluent.AntiAlias(g);
         var inset = 6f * _scale;
         var circle = RectangleF.Inflate(rect, -inset, -inset);
-        using var pen = new Pen(Fluent.AccentText, 2f * _scale)
+        using var pen = new Pen(Fluent.WithAlpha(Fluent.AccentText, opacity), 2f * _scale)
         {
             StartCap = LineCap.Round,
             EndCap = LineCap.Round,
@@ -1396,18 +1420,24 @@ internal sealed class WebShell : Form
 
         _addressAnimFrom = _toolbar.Height;
         _addressAnimTo = _addressCollapsed ? 0 : S(ToolbarHeight);
-        _addressAnimStep = 0;
+        _addressAnimStart = Environment.TickCount64;
         _addressAnimating = true;
         _toolbar.Visible = true;   // 收起过程中还要画出来
         _addressTimer.Start();
     }
 
-    /// <summary>工具条高度 36 ↔ 0 的滑动动画（12 帧 / ~190ms，缓出）。</summary>
+    /// <summary>
+    /// 工具条高度 36 ↔ 0 的滑动动画。按时钟推进（不是按帧数），
+    /// 曲线用五次方缓出：起步一冲、尾巴细长，观感才不像匀速。
+    /// </summary>
     private void OnAddressAnimationTick()
     {
-        _addressAnimStep++;
-        var t = Math.Min(1f, _addressAnimStep / 12f);
-        var eased = 1f - MathF.Pow(1f - t, 3);
+        var t = Math.Clamp(
+            (Environment.TickCount64 - _addressAnimStart) / (float)AddressAnimMs,
+            0f,
+            1f);
+        // 三次方缓出：起步明显但不是"一帧瞬移"，尾巴也收得住
+        var eased = 1f - MathF.Pow(1f - t, 3f);
         var height = (int)MathF.Round(_addressAnimFrom + ((_addressAnimTo - _addressAnimFrom) * eased));
 
         var title = S(TitleBarHeight);

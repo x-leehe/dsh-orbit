@@ -132,20 +132,22 @@ internal static class Program
 
         string Drive(string label)
         {
-            timer.Stop();
-            var frames = new List<int>();
-            for (var i = 0; i < 13; i++)
+            // 真实节拍：让 WinForms 定时器自己跑，按时间采样高度
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var frames = new List<string>();
+            var last = -1;
+            while (clock.ElapsedMilliseconds < 320)
             {
-                var before = $"step={stepField.GetValue(shell)} from={fromField.GetValue(shell)} to={toField.GetValue(shell)}";
-                tick.Invoke(shell, null);
-                frames.Add(toolbar.Height);
-                if (i < 2)
+                Application.DoEvents();
+                Thread.Sleep(5);
+                if (toolbar.Height != last)
                 {
-                    Console.WriteLine($"  {label}[{i}] {before} -> {toolbar.Height}");
+                    last = toolbar.Height;
+                    frames.Add($"{clock.ElapsedMilliseconds}ms:{last}");
                 }
             }
 
-            return $"{label}: {string.Join(" → ", frames)}";
+            return $"{label}: {string.Join("  ", frames)}";
         }
 
         Click(collapse);
