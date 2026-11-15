@@ -110,6 +110,11 @@ internal static class Fluent
     public static Color Caution { get; private set; } = Color.FromArgb(0xFC, 0xE1, 0x00);
     public static Color Critical { get; private set; } = Color.FromArgb(0xFF, 0x99, 0xA4);
 
+    // macOS 红绿灯三色：这是刻意的「系统级仿制」，不随主题变，也不算通用语义色。
+    public static Color TrafficClose { get; } = Color.FromArgb(0xFF, 0x5F, 0x57);
+    public static Color TrafficMinimize { get; } = Color.FromArgb(0xFE, 0xBC, 0x2E);
+    public static Color TrafficMaximize { get; } = Color.FromArgb(0x28, 0xC8, 0x40);
+
     /// <summary>悬停/按下状态层（M3 state layer）。</summary>
     public static Color HoverLayer => IsDark ? Color.FromArgb(20, 255, 255, 255) : Color.FromArgb(14, 0, 0, 0);
 

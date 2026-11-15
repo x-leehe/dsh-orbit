@@ -166,7 +166,8 @@ new Ripple().Begin(point) + Ripple.Draw(g, bounds, radius, tint)
 - 标签：高 32、上圆角 8、激活 = `Layer` 底 + 底部 2px `AccentFill` 指示条
 - 关闭按钮 14px 图标，仅悬停/激活时显示
 - `+` 为 32×32 图标按钮，跟在最后一个标签后面（放不下时钉在标签区最右）
-- 红绿灯：保留 macOS 语义与顺序（最小化 → 最大化 → 关闭），命中区 32×32，悬停加 8% 状态层，颜色 `Caution` / `Success` / `Critical`
+- 红绿灯：**macOS 原色**（`TrafficMinimize #FEBC2E` / `TrafficMaximize #28C840` / `TrafficClose #FF5F57`，是设计系统里的显式例外，不跟主题变），
+  纯圆点 Ø15、无背板；悬停时圆点提亮并浮出 × / − / + 符号；命中区仍 32×32
 - 地址行：**扁平行，没有外框、没有圆角、没有底板**——文字（12px 内边距）和两个 26×26 图标按钮直接坐在工具条上；
   悬停时整行提亮一档（`Mix(Mica, HoverLayer, 0.5)`），聚焦时换上 `ControlFill` 并在整行底部画 2px 强调线；
   整行都是可点击的编辑区，工具条与内容之间靠 1px `Divider` 分隔

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
@@ -1701,7 +1702,8 @@ internal sealed class WebShell : Form
             SetStyle(
                 ControlStyles.AllPaintingInWmPaint |
                 ControlStyles.OptimizedDoubleBuffer |
-                ControlStyles.UserPaint,
+                ControlStyles.UserPaint |
+                ControlStyles.SupportsTransparentBackColor,
                 true);
             BackColor = Fluent.Flyout;
 
@@ -1716,12 +1718,12 @@ internal sealed class WebShell : Form
             Invalidate();
         }
 
-        /// <summary>颜色语义与顺序保持 macOS：最小化 Caution、最大化 Success、关闭 Critical。</summary>
+        /// <summary>macOS 红绿灯三色（顺序：最小化 → 最大化 → 关闭）。</summary>
         private Color DotColor => _dot switch
         {
-            Dot.Close => Fluent.Critical,
-            Dot.Minimize => Fluent.Caution,
-            _ => Fluent.Success,
+            Dot.Close => Fluent.TrafficClose,
+            Dot.Minimize => Fluent.TrafficMinimize,
+            _ => Fluent.TrafficMaximize,
         };
 
         protected override void OnMouseEnter(EventArgs e)
@@ -1752,20 +1754,45 @@ internal sealed class WebShell : Form
             var g = e.Graphics;
             Fluent.AntiAlias(g);
 
-            if (_hover)
+            var scale = DeviceDpi / 96f;
+            var diameter = 15f * scale;
+            var cx = Width / 2f;
+            var cy = Height / 2f;
+            var baseColor = DotColor;
+
+            // 只有圆点，没有背板：悬停时圆点提亮、并浮出 × / − / + 符号（macOS 的做法）。
+            using (var fill = new SolidBrush(_hover ? ControlPaint.Light(baseColor, 0.12f) : baseColor))
             {
-                using var backplate = Fluent.Rounded(new RectangleF(0, 0, Width, Height), Fluent.RCard);
-                Fluent.Fill(g, backplate, Fluent.HoverLayer);
+                g.FillEllipse(fill, cx - (diameter / 2f), cy - (diameter / 2f), diameter, diameter);
             }
 
-            var diameter = 15f * (DeviceDpi / 96f);
-            using var brush = new SolidBrush(DotColor);
-            g.FillEllipse(
-                brush,
-                (Width / 2f) - (diameter / 2f),
-                (Height / 2f) - (diameter / 2f),
-                diameter,
-                diameter);
+            if (!_hover)
+            {
+                return;
+            }
+
+            var ink = Fluent.Mix(baseColor, Color.Black, 0.52f);
+            using var pen = new Pen(ink, 1.6f * scale)
+            {
+                StartCap = LineCap.Round,
+                EndCap = LineCap.Round,
+            };
+
+            var arm = 3.6f * scale;
+            switch (_dot)
+            {
+                case Dot.Close:
+                    g.DrawLine(pen, cx - arm, cy - arm, cx + arm, cy + arm);
+                    g.DrawLine(pen, cx + arm, cy - arm, cx - arm, cy + arm);
+                    break;
+                case Dot.Minimize:
+                    g.DrawLine(pen, cx - (arm + 0.6f * scale), cy, cx + (arm + 0.6f * scale), cy);
+                    break;
+                default:
+                    g.DrawLine(pen, cx - (arm + 0.6f * scale), cy, cx + (arm + 0.6f * scale), cy);
+                    g.DrawLine(pen, cx, cy - (arm + 0.6f * scale), cx, cy + (arm + 0.6f * scale));
+                    break;
+            }
         }
 
         protected override void Dispose(bool disposing)
@@ -1795,7 +1822,8 @@ internal sealed class WebShell : Form
             SetStyle(
                 ControlStyles.AllPaintingInWmPaint |
                 ControlStyles.OptimizedDoubleBuffer |
-                ControlStyles.UserPaint,
+                ControlStyles.UserPaint |
+                ControlStyles.SupportsTransparentBackColor,
                 true);
             BackColor = Fluent.Flyout;
             _toolTip = new ToolTip();
