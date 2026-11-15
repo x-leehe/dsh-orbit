@@ -90,7 +90,7 @@ internal sealed class FluentButton : Control
     protected override void OnPaint(PaintEventArgs e)
     {
         var g = e.Graphics;
-        Fluent.AntiAlias(g);
+        Fluent.AntiAlias(g, crisp: true);
 
         var state = !Enabled ? VisualState.Disabled
             : _pressed ? VisualState.Pressed
@@ -214,7 +214,7 @@ internal sealed class FluentTextBox : Control
     protected override void OnPaint(PaintEventArgs e)
     {
         var g = e.Graphics;
-        Fluent.AntiAlias(g);
+        Fluent.AntiAlias(g, crisp: true);
 
         var scale = DeviceDpi / 96f;
         var focused = _inner.Focused;

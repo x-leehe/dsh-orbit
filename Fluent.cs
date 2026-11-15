@@ -510,10 +510,17 @@ internal static class Fluent
 
     // ---------------------------------------------------------------- 图形基础
 
-    public static void AntiAlias(Graphics g)
+    /// <summary>
+    /// 基础绘制状态。<paramref name="crisp"/> = true 时文字走 ClearTypeGridFit——
+    /// 只给**不透明**窗口用（外壳 / 对话框 / 安装器）：12px 中文在灰度抗锯齿下发虚，
+    /// 换成 ClearType 后笔画落在像素中心，明显更实；位置不是整数像素也不影响。
+    /// 透明 / 逐像素分层窗口（挂件、托盘菜单、搜索引擎弹层）必须留 false：
+    /// ClearType 需要不透明底色，画在透明面上会出彩边。
+    /// </summary>
+    public static void AntiAlias(Graphics g, bool crisp = false)
     {
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        g.TextRenderingHint = TextRenderingHint.AntiAlias;
+        g.TextRenderingHint = crisp ? TextRenderingHint.ClearTypeGridFit : TextRenderingHint.AntiAlias;
         g.PixelOffsetMode = PixelOffsetMode.HighQuality;
     }
 

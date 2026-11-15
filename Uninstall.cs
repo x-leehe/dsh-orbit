@@ -427,7 +427,7 @@ internal sealed class UninstallDialog : Form
     protected override void OnPaint(PaintEventArgs e)
     {
         var g = e.Graphics;
-        Fluent.AntiAlias(g);
+        Fluent.AntiAlias(g, crisp: true);
 
         var scale = DeviceDpi / 96f;
         int S(int v) => (int)MathF.Round(v * scale);

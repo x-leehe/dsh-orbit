@@ -52,6 +52,9 @@ dotnet run --project tests/Render -c Release -- artifacts/gallery --only menu
 - 颜色：`Mica` / `Layer` / `Flyout` / `ControlFill` / `StrokeColor` / `TextPrimary…Tertiary` /
   `AccentFill` / `Success` / `Caution` / `Critical`；强调色取自系统，深浅阶自动推导。
 - 字体：`Segoe UI Variable Text / Display / Small`（Win10 回落 `Segoe UI`），中文由系统字体链回落。
+- 文字渲染：每个 `Paint` 开头调 `Fluent.AntiAlias(g, crisp: true)`（ClearType），只给**不透明窗口**；
+  分层 / 透明表面（挂件、托盘菜单、搜索引擎弹层）**不传 `crisp`**——ClearType 画在透明面上会出彩边。
+  灰度抗锯齿会让 12px 中文发虚，别再改回去；核对用 `RenderPreview.exe <目录> --only chrome`（含 4 倍放大图）。
 - 圆角只有四档：`RControl=4`、`RCard=8`、`RTile=16`、`RPill=999`。
 - 原语：`Card` / `Tile` / `Button` / `IconButton` / `Segmented` / `MenuRow` / `Pill` / `TextBox` / `Divider`。
 - 控件级 Fluent 包装（对话框用）：`FluentButton`、`FluentTextBox`（`FluentControls.cs`）。

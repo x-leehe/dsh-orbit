@@ -934,7 +934,7 @@ internal sealed class WebShell : Form
     private void PaintHeader(object? sender, PaintEventArgs e)
     {
         var g = e.Graphics;
-        Fluent.AntiAlias(g);
+        Fluent.AntiAlias(g, crisp: true);
 
         var width = _header.Width;
         var height = _header.Height;
@@ -1088,7 +1088,7 @@ internal sealed class WebShell : Form
     private void PaintToolbar(object? sender, PaintEventArgs e)
     {
         var g = e.Graphics;
-        Fluent.AntiAlias(g);
+        Fluent.AntiAlias(g, crisp: true);
 
         var width = _toolbar.Width;
         var height = _toolbar.Height;
@@ -1222,7 +1222,7 @@ internal sealed class WebShell : Form
     private void DrawLoadingSpinner(Graphics g, RectangleF rect, float opacity = 1f)
     {
         var state = g.Save();
-        Fluent.AntiAlias(g);
+        Fluent.AntiAlias(g, crisp: true);
         var inset = 6f * _scale;
         var circle = RectangleF.Inflate(rect, -inset, -inset);
         using var pen = new Pen(Fluent.WithAlpha(Fluent.AccentText, opacity), 2f * _scale)
@@ -2272,7 +2272,7 @@ internal sealed class WebShell : Form
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics;
-            Fluent.AntiAlias(g);
+            Fluent.AntiAlias(g, crisp: true);
 
             var scale = DeviceDpi / 96f;
             var diameter = 15f * scale;
@@ -2401,7 +2401,7 @@ internal sealed class WebShell : Form
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics;
-            Fluent.AntiAlias(g);
+            Fluent.AntiAlias(g, crisp: true);
 
             Fluent.IconButton(
                 g,

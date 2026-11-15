@@ -21,6 +21,7 @@
 6. 悬停/按下用 `VisualState` + `Fluent.OverState` 的 8%/10% 状态层，不要写死高亮色。
 7. 强调色一律取 `Fluent.AccentFill`（跟随系统强调色），不要写死 DSH 蓝。
 8. 高 DPI：所有像素值经 `S(v) = round(v * DeviceDpi / 96)` 缩放；字体用 `Fluent.Font(role, strong, dpiScale)`。
+9. 每个 `Paint` 开头调一次 `Fluent.AntiAlias(g, crisp: true)`；**分层 / 透明表面**（挂件、托盘菜单、弹层）不传 `crisp`，保持灰度抗锯齿。
 
 ## 2. 令牌
 
@@ -58,6 +59,13 @@
 
 字体族：`Segoe UI Variable Text`（正文）/ `… Text Semibold`（强调）/ `… Display`（大标题）/ `… Small`（小字）。
 中文由系统字体链自动回落，无需指定。Win10 回落到 `Segoe UI`。
+
+文字渲染（每个 `Paint` 开头都要调）：`Fluent.AntiAlias(g, crisp: true)` → `ClearTypeGridFit`，只给**不透明窗口**
+（外壳、对话框、安装器）。GDI+ 的灰度抗锯齿会把 12px 中文的笔画压在半个像素上，看起来发虚；
+ClearType 把笔画放进像素里，明显更实，而且布局坐标不是整数像素也不受影响。
+**透明 / 逐像素分层表面**（桌面卡片、托盘菜单、搜索引擎弹层）必须留 `crisp: false`（默认 `AntiAlias`）：
+ClearType 需要不透明底色，画在透明面上会出彩边。
+核对方式：`RenderPreview.exe <目录> --only chrome` 会产出标题栏 + 工具条的 1:1 图和 4 倍放大图。
 
 ### 2.3 海拔（M3）
 

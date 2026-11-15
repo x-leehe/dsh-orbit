@@ -8,8 +8,9 @@ namespace DshOrbit;
 /// 离屏渲染真实界面，产出文档截图与设计自查图。
 /// 用法：
 ///   RenderPreview.exe &lt;输出目录&gt;                 挂件 + 菜单 + 新标签页（浅/深）
-///   RenderPreview.exe &lt;目录&gt; --only menu           只渲染某一面（widget/menu/start/dialog/shell/tokens）
+///   RenderPreview.exe &lt;目录&gt; --only menu           只渲染某一面（widget/menu/start/dialog/shell/chrome/tokens）
 ///   RenderPreview.exe &lt;目录&gt; --shell &lt;url&gt;        截取真实外壳窗口
+///   RenderPreview.exe &lt;目录&gt; --only chrome         只画标题栏 + 工具条（不建 WebView2，可像素级核对文字）
 ///   RenderPreview.exe &lt;目录&gt; --icons               图标对照表
 /// </summary>
 internal static class Program
@@ -80,6 +81,11 @@ internal static class Program
             if (only is null or "dialog")
             {
                 RenderDialog(outputDir, suffix);
+            }
+
+            if (only is null or "chrome")
+            {
+                RenderChrome(outputDir, suffix);
             }
 
             if (only == "shell" || (only is null && shellUrl is not null))
@@ -399,6 +405,72 @@ internal static class Program
     }
 
     /// <summary>
+    /// 只画标题栏 + 工具条：不建 WebView2，所以程序在跑的时候也能随时跑，
+    /// 用来核对字号 / 文字渲染 / 标签间距（配合 4 倍放大图看笔画是否发虚）。
+    /// </summary>
+    private static void RenderChrome(string outputDir, string suffix)
+    {
+        var shell = new WebShell("", ShellCloseMode.Hide);
+        var type = typeof(WebShell);
+        const System.Reflection.BindingFlags Flags =
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+
+        // 构造函数里已有一个新标签页，再补一个，方便看激活 / 非激活两种文字颜色。
+        var create = type.GetMethod("CreateStartTab", Flags)!;
+        for (var i = 1; i < 3; i++)
+        {
+            create.Invoke(shell, null);
+        }
+
+        shell.ClientSize = new Size(1280, 860);
+        // 不管用户当前是收起还是展开，这里固定渲染展开态：地址行文字也要一起核对。
+        type.GetField("_addressCollapsed", Flags)!.SetValue(shell, false);
+        type.GetMethod("LayoutChildren", Flags)!.Invoke(shell, new object[] { 1280, 860 });
+
+        var header = (Control)type.GetField("_header", Flags)!.GetValue(shell)!;
+        var toolbar = (Control)type.GetField("_toolbar", Flags)!.GetValue(shell)!;
+
+        using var chrome = new Bitmap(header.Width, header.Height + toolbar.Height, PixelFormat.Format32bppArgb);
+        using (var g = Graphics.FromImage(chrome))
+        {
+            type.GetMethod("PaintHeader", Flags)!.Invoke(
+                shell,
+                new object?[] { null, new PaintEventArgs(g, new Rectangle(0, 0, header.Width, header.Height)) });
+
+            var state = g.Save();
+            g.TranslateTransform(0, header.Height);
+            g.SetClip(new Rectangle(0, 0, toolbar.Width, toolbar.Height));
+            type.GetMethod("PaintToolbar", Flags)!.Invoke(
+                shell,
+                new object?[] { null, new PaintEventArgs(g, new Rectangle(0, 0, toolbar.Width, toolbar.Height)) });
+            g.Restore(state);
+        }
+
+        chrome.Save(Path.Combine(outputDir, $"chrome-{suffix}.png"), ImageFormat.Png);
+        Console.WriteLine($"saved chrome-{suffix}.png（标题栏 {header.Height}px + 工具条 {toolbar.Height}px）");
+
+        var rects = (System.Collections.IList)type.GetField("_tabRects", Flags)!.GetValue(shell)!;
+        if (rects.Count > 0 && rects[0] is RectangleF first)
+        {
+            var left = Math.Max(0, (int)first.X - 6);
+            var width = Math.Min(chrome.Width - left, (int)(first.Width * 2) + 12);
+            using var crop = chrome.Clone(new Rectangle(left, 0, Math.Max(1, width), chrome.Height), chrome.PixelFormat);
+            using var zoom = new Bitmap(crop.Width * 4, crop.Height * 4, PixelFormat.Format32bppArgb);
+            using (var g = Graphics.FromImage(zoom))
+            {
+                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
+                g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
+                g.DrawImage(crop, new Rectangle(0, 0, zoom.Width, zoom.Height));
+            }
+
+            zoom.Save(Path.Combine(outputDir, $"chrome-{suffix}-zoom.png"), ImageFormat.Png);
+            Console.WriteLine($"saved chrome-{suffix}-zoom.png");
+        }
+
+        shell.Dispose();
+    }
+
+    /// <summary>
     /// 抓窗口内容：优先 PrintWindow(PW_RENDERFULLCONTENT)，失败或被其他窗口遮挡时再退回屏幕拷贝。
     /// 直接用 CopyFromScreen 会把盖在上面的窗口一起拍进来。
     /// </summary>
@@ -465,7 +537,7 @@ internal static class Program
         const int height = 760;
         using var bitmap = new Bitmap(width, height);
         using var g = Graphics.FromImage(bitmap);
-        Fluent.AntiAlias(g);
+        Fluent.AntiAlias(g, crisp: true);
         g.Clear(Fluent.Mica);
 
         // 卡片 + 海拔
@@ -577,7 +649,7 @@ internal static class Program
         using var bitmap = new Bitmap(columns * cell, rows * cell);
         using var g = Graphics.FromImage(bitmap);
         g.Clear(Color.FromArgb(16, 20, 28));
-        Fluent.AntiAlias(g);
+        Fluent.AntiAlias(g, crisp: true);
 
         using var font = new Font("Segoe UI", 10, FontStyle.Regular, GraphicsUnit.Pixel);
         using var brush = new SolidBrush(Color.FromArgb(198, 208, 224));

@@ -401,7 +401,7 @@ internal sealed class SetupForm : Form
     protected override void OnPaint(PaintEventArgs e)
     {
         var g = e.Graphics;
-        Fluent.AntiAlias(g);
+        Fluent.AntiAlias(g, crisp: true);
         Fluent.Fill(g, ClientRectangle, Fluent.Mica);
 
         DrawTitleBar(g);

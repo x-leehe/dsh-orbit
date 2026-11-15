@@ -1,10 +1,12 @@
 using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Text;
 using Xunit;
 
 namespace DshOrbit.Tests;
 
 /// <summary>
-/// Fluent 的纯函数部分：颜色插值 / alpha 钳制 / 缓动曲线 / 状态层 / 圆角路径。
+/// Fluent 的纯函数部分：颜色插值 / alpha 钳制 / 缓动曲线 / 状态层 / 圆角路径 / 文字渲染模式。
 /// 不初始化主题（Fluent.Init/Refresh 会读注册表），使用静态默认值（深色基准）。
 /// 期望值均为手算结果，失败时能直接看出偏差。
 /// </summary>
@@ -12,6 +14,49 @@ public class FluentTests
 {
     private static readonly Color Lower = Color.FromArgb(0, 10, 20, 30);
     private static readonly Color Upper = Color.FromArgb(255, 30, 40, 50);
+
+    // ---------------------------------------------------------------- 文字渲染模式
+
+    /// <summary>
+    /// 分层 / 透明表面必须留在灰度抗锯齿：ClearType 需要不透明底色，画在透明面上会出彩边。
+    /// </summary>
+    [Fact]
+    public void AntiAlias_DefaultIsGrayScale_ForLayeredSurfaces()
+    {
+        using var bitmap = new Bitmap(4, 4);
+        using var g = Graphics.FromImage(bitmap);
+
+        Fluent.AntiAlias(g);
+
+        Assert.Equal(TextRenderingHint.AntiAlias, g.TextRenderingHint);
+    }
+
+    /// <summary>不透明窗口（外壳 / 对话框 / 安装器）用 ClearType：12px 中文笔画明显更实。</summary>
+    [Fact]
+    public void AntiAlias_CrispUsesClearType_ForOpaqueWindows()
+    {
+        using var bitmap = new Bitmap(4, 4);
+        using var g = Graphics.FromImage(bitmap);
+
+        Fluent.AntiAlias(g, crisp: true);
+
+        Assert.Equal(TextRenderingHint.ClearTypeGridFit, g.TextRenderingHint);
+    }
+
+    /// <summary>两种模式都要带上矢量抗锯齿 + 高质量像素偏移，否则圆角 / 图标会起毛边。</summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AntiAlias_AlsoSetsShapeQuality(bool crisp)
+    {
+        using var bitmap = new Bitmap(4, 4);
+        using var g = Graphics.FromImage(bitmap);
+
+        Fluent.AntiAlias(g, crisp);
+
+        Assert.Equal(SmoothingMode.AntiAlias, g.SmoothingMode);
+        Assert.Equal(PixelOffsetMode.HighQuality, g.PixelOffsetMode);
+    }
 
     // ---------------------------------------------------------------- Mix
 

@@ -363,7 +363,7 @@ internal sealed class StartPage : Control
     protected override void OnPaint(PaintEventArgs e)
     {
         var g = e.Graphics;
-        Fluent.AntiAlias(g);
+        Fluent.AntiAlias(g, crisp: true);
         g.InterpolationMode = InterpolationMode.HighQualityBicubic;
 
         DrawBackground(g);
