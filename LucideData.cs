@@ -127,6 +127,14 @@ internal static partial class LucideData
         {
             "P|m18 15-6-6-6 6",
         },
+        ["chevron-left"] = new[]
+        {
+            "P|m15 18-6-6 6-6",
+        },
+        ["chevron-right"] = new[]
+        {
+            "P|m9 18 6-6-6-6",
+        },
         ["circle-stop"] = new[]
         {
             "R|9|9|6|6|1",

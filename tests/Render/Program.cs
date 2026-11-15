@@ -30,6 +30,12 @@ internal static class Program
         var onlyIndex = Array.IndexOf(args, "--only");
         var only = onlyIndex >= 0 && onlyIndex + 1 < args.Length ? args[onlyIndex + 1] : null;
 
+        if (args.Contains("--verify-tabs"))
+        {
+            VerifyTabs(int.TryParse(args.ElementAtOrDefault(Array.IndexOf(args, "--verify-tabs") + 1), out var n) ? n : 12);
+            return;
+        }
+
         if (args.Contains("--verify-toggle"))
         {
             VerifyToggle();
@@ -78,7 +84,9 @@ internal static class Program
 
             if (only == "shell" || (only is null && shellUrl is not null))
             {
-                RenderShell(outputDir, suffix, shellUrl ?? "about:blank", startTab: args.Contains("--shell-start"));
+                var tabsArg = Array.IndexOf(args, "--tabs");
+                var tabCount = tabsArg >= 0 && tabsArg + 1 < args.Length && int.TryParse(args[tabsArg + 1], out var n) ? n : 0;
+                RenderShell(outputDir, suffix, shellUrl ?? "about:blank", args.Contains("--shell-start"), tabCount);
             }
         }
 
@@ -157,6 +165,36 @@ internal static class Program
         Click(collapse);
         Console.WriteLine(Drive("expand"));
         Report("expanded2");
+        shell.Dispose();
+    }
+
+    /// <summary>多标签布局自检：宽度收缩、溢出判定、滚动上限。</summary>
+    private static void VerifyTabs(int count)
+    {
+        Fluent.Init(AppTheme.Dark);
+        var shell = new WebShell("", ShellCloseMode.Hide);
+        var type = typeof(WebShell);
+        const System.Reflection.BindingFlags Flags =
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+
+        var create = type.GetMethod("CreateStartTab", Flags)!;
+        for (var i = 1; i < count; i++)
+        {
+            create.Invoke(shell, null);
+        }
+
+        shell.ClientSize = new Size(1280, 860);
+        type.GetMethod("LayoutChildren", Flags)!.Invoke(shell, new object[] { 1280, 860 });
+
+        var tabs = (System.Collections.IList)type.GetField("_tabs", Flags)!.GetValue(shell)!;
+        var rects = (System.Collections.IList)type.GetField("_tabRects", Flags)!.GetValue(shell)!;
+        var overflow = type.GetField("_hasOverflow", Flags)!.GetValue(shell);
+        var scroll = type.GetField("_tabScroll", Flags)!.GetValue(shell);
+        var maxScroll = type.GetField("_tabMaxScroll", Flags)!.GetValue(shell);
+        var clipRight = type.GetField("_tabsClipRight", Flags)!.GetValue(shell);
+        var width = type.GetField("_tabWidth", Flags)!.GetValue(shell);
+
+        Console.WriteLine($"tabs={tabs.Count} rects={rects.Count} width={width} overflow={overflow} scroll={scroll}/{maxScroll} clipRight={clipRight}");
         shell.Dispose();
     }
 
@@ -309,10 +347,23 @@ internal static class Program
 
     // ---------------------------------------------------------------- 外壳
 
-    private static void RenderShell(string outputDir, string suffix, string url, bool startTab = false)
+    private static void RenderShell(string outputDir, string suffix, string url, bool startTab = false, int tabs = 0)
     {
         var shell = new WebShell(url, ShellCloseMode.Hide);
         shell.Show();
+
+        if (tabs > 1)
+        {
+            var createTab = typeof(WebShell).GetMethod(
+                "CreateStartTab",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            for (var i = 1; i < tabs; i++)
+            {
+                createTab?.Invoke(shell, null);
+            }
+
+            Pump(400);
+        }
         shell.TopMost = true;
         shell.Activate();
         // WebView2 加载真实页面要一点时间，太短会截到 loading 态。

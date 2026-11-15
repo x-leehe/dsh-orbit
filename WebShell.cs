@@ -27,7 +27,7 @@ internal sealed class WebShell : Form
     private const int ToolbarHeight = 36;
     private const int TabHeight = 32;
     private const int ControlSize = 32;
-    private const int MinTabWidth = 132;
+    private const int MinTabWidth = 84;
     private const int MaxTabWidth = 196;
 
     private const int ResizeGrip = 6;
@@ -64,6 +64,18 @@ internal sealed class WebShell : Form
     private readonly Graphics _measureGraphics;
 
     private Rectangle _plusRect = Rectangle.Empty;
+
+    private bool _hasOverflow;
+    private int _tabWidth;
+    private bool _tabDragCandidate;
+    private bool _tabDragging;
+    private int _tabDragStartX;
+    private int _tabDragScroll;
+    private int _tabDragLastX;
+    private long _tabDragLastTick;
+    private float _tabGlideVelocity;
+    private int _tabMaxScroll;
+    private readonly System.Windows.Forms.Timer _tabGlideTimer = new() { Interval = 16 };
     private Rectangle _addressChrome = Rectangle.Empty;
     private Rectangle _refreshRect = Rectangle.Empty;
     private Rectangle _externalRect = Rectangle.Empty;
@@ -126,6 +138,7 @@ internal sealed class WebShell : Form
             Interactive = HeaderInteractive,
         };
         _header.Paint += PaintHeader;
+        _header.MouseDown += HeaderMouseDown;
         _header.MouseMove += HeaderMouseMove;
         _header.MouseLeave += HeaderMouseLeave;
         _header.MouseUp += HeaderMouseUp;
@@ -164,6 +177,7 @@ internal sealed class WebShell : Form
         _address.LostFocus += (_, _) => EndAddressEditing();
 
         _addressTimer.Tick += (_, _) => OnAddressAnimationTick();
+        _tabGlideTimer.Tick += (_, _) => OnTabGlideTick();
 
         _spinTimer.Tick += (_, _) =>
         {
@@ -590,6 +604,8 @@ internal sealed class WebShell : Form
         }
 
         _active = tab;
+        EnsureActiveVisible();
+
         if (tab.View is not null)
         {
             tab.View.BringToFront();
@@ -807,20 +823,26 @@ internal sealed class WebShell : Form
 
         var control = S(ControlSize);
         var gap = S(4);
-        var font = Fluent.Font(TextRole.Caption, false, _scale);
-        var widths = new float[_tabs.Count];
-        var total = 0f;
-        for (var i = 0; i < _tabs.Count; i++)
-        {
-            var text = Fluent.Measure(_measureGraphics, _tabs[i].Title, font);
-            var preferred = text + S(44);
-            widths[i] = Math.Clamp(preferred, S(MinTabWidth), S(MaxTabWidth));
-            total += widths[i];
-        }
+        var min = (float)S(MinTabWidth);
+        var max = (float)S(MaxTabWidth);
 
         // 标签区可用宽度 = 一直到工具按钮左边；+ 号本身不算在内。
         var available = Math.Max(0f, _tabsRegionRight - control - gap - _tabsStart);
+        var count = Math.Max(1, _tabs.Count);
+
+        // 一批标签均分宽度：数量多了先一起变窄，到最小值还放不下才开滚动。
+        var width = Math.Clamp(available / count, min, max);
+        var total = width * _tabs.Count;
+        _hasOverflow = total > available + 0.5f;
+        if (_hasOverflow)
+        {
+            width = min;
+            total = width * _tabs.Count;
+        }
+
+        _tabWidth = (int)MathF.Round(width);
         var maxScroll = Math.Max(0f, total - available);
+        _tabMaxScroll = (int)MathF.Round(maxScroll);
         _tabScroll = (int)Math.Clamp((float)_tabScroll, 0f, maxScroll);
 
         var tabsEnd = _tabsStart + total - _tabScroll;
@@ -834,14 +856,43 @@ internal sealed class WebShell : Form
         var closeSize = S(14);
         for (var i = 0; i < _tabs.Count; i++)
         {
-            var rect = new RectangleF(x, _tabStripTop, widths[i], height);
+            var rect = new RectangleF(x, _tabStripTop, width, height);
             _tabRects.Add(rect);
             _closeRects.Add(new RectangleF(
                 rect.Right - S(10) - closeSize,
                 rect.Y + ((rect.Height - closeSize) / 2f),
                 closeSize,
                 closeSize));
-            x += widths[i];
+            x += width;
+        }
+    }
+
+    /// <summary>把当前标签滚进可视区（切标签 / 新建 / 关闭后调用）。</summary>
+    private void EnsureActiveVisible()
+    {
+        var index = _active is null ? -1 : _tabs.IndexOf(_active);
+        if (index < 0 || index >= _tabRects.Count)
+        {
+            return;
+        }
+
+        var rect = _tabRects[index];
+        var changed = false;
+        if (rect.Left < _tabsStart)
+        {
+            _tabScroll -= (int)MathF.Ceiling(_tabsStart - rect.Left);
+            changed = true;
+        }
+        else if (rect.Right > _tabsClipRight)
+        {
+            _tabScroll += (int)MathF.Ceiling(rect.Right - _tabsClipRight);
+            changed = true;
+        }
+
+        if (changed)
+        {
+            _tabScroll = Math.Max(0, _tabScroll);
+            LayoutTabs();
         }
     }
 
@@ -873,6 +924,10 @@ internal sealed class WebShell : Form
         LayoutTabs();
         _header.Invalidate();
     }
+
+    /// <summary>边界阴影色：深色主题下要更重一点才看得出来。</summary>
+    private static Color IsDarkShadow() =>
+        Fluent.IsDark ? Color.FromArgb(90, 0, 0, 0) : Color.FromArgb(56, 0, 0, 0);
 
     // ---------------------------------------------------------------- 标题栏绘制
 
@@ -973,6 +1028,50 @@ internal sealed class WebShell : Form
         }
 
         g.Restore(clip);
+
+        // 溢出时左右边界各一道阴影（渐隐到标题栏底色 + 边缘压暗一点），
+        // 暗示"这一侧还有标签"。不占标签空间，触屏靠滑动。
+        if (_hasOverflow)
+        {
+            var fade = S(30);
+            if (_tabScroll > 0)
+            {
+                var rect = new RectangleF(_tabsStart, 0, fade, height);
+                using var brush = new LinearGradientBrush(
+                    rect,
+                    Fluent.Flyout,
+                    Color.FromArgb(0, Fluent.Flyout),
+                    LinearGradientMode.Horizontal);
+                g.FillRectangle(brush, rect);
+
+                var edge = new RectangleF(_tabsStart, 0, S(8), height);
+                using var shade = new LinearGradientBrush(
+                    edge,
+                    IsDarkShadow(),
+                    Color.FromArgb(0, 0, 0, 0),
+                    LinearGradientMode.Horizontal);
+                g.FillRectangle(shade, edge);
+            }
+
+            if (_tabScroll < _tabMaxScroll)
+            {
+                var rect = new RectangleF(_tabsClipRight - fade, 0, fade, height);
+                using var brush = new LinearGradientBrush(
+                    rect,
+                    Color.FromArgb(0, Fluent.Flyout),
+                    Fluent.Flyout,
+                    LinearGradientMode.Horizontal);
+                g.FillRectangle(brush, rect);
+
+                var edge = new RectangleF(_tabsClipRight - S(8), 0, S(8), height);
+                using var shade = new LinearGradientBrush(
+                    edge,
+                    Color.FromArgb(0, 0, 0, 0),
+                    IsDarkShadow(),
+                    LinearGradientMode.Horizontal);
+                g.FillRectangle(shade, edge);
+            }
+        }
 
         // + 号：32×32 IconButton，跟在标签末尾（放不下时钉在标签区最右）。
         Fluent.IconButton(
@@ -1137,8 +1236,71 @@ internal sealed class WebShell : Form
 
     // ---------------------------------------------------------------- 标签交互
 
+    /// <summary>按住标签条拖动 = 横向滚动（触屏滑动也走这条路径，Windows 会把触摸转成鼠标消息）。</summary>
+    private void HeaderMouseDown(object? sender, MouseEventArgs e)
+    {
+        _tabDragCandidate = false;
+        if (e.Button != MouseButtons.Left || !_hasOverflow)
+        {
+            return;
+        }
+
+        if (e.Y < _tabStripTop || e.Y > _tabStripTop + S(TabHeight) ||
+            e.X < _tabsStart || e.X > _tabsClipRight)
+        {
+            return;
+        }
+
+        _tabDragCandidate = true;
+        _tabDragging = false;
+        _tabDragStartX = e.X;
+        _tabDragLastX = e.X;
+        _tabDragLastTick = Environment.TickCount64;
+        _tabDragScroll = _tabScroll;
+        _tabGlideVelocity = 0f;
+        _tabGlideTimer.Stop();
+    }
+
+    private void OnTabGlideTick()
+    {
+        _tabGlideVelocity *= 0.90f;
+        if (Math.Abs(_tabGlideVelocity) < 0.03f)
+        {
+            _tabGlideTimer.Stop();
+            return;
+        }
+
+        _tabScroll = Math.Max(0, _tabScroll - (int)MathF.Round(_tabGlideVelocity * 16f));
+        LayoutTabs();
+        _header.Invalidate();
+    }
+
     private void HeaderMouseMove(object? sender, MouseEventArgs e)
     {
+        if (_tabDragCandidate && e.Button == MouseButtons.Left)
+        {
+            var dx = e.X - _tabDragStartX;
+            if (!_tabDragging && Math.Abs(dx) >= S(6))
+            {
+                _tabDragging = true;
+                _header.Cursor = Cursors.SizeWE;
+            }
+
+            if (_tabDragging)
+            {
+                var now = Environment.TickCount64;
+                var elapsed = Math.Max(1, now - _tabDragLastTick);
+                _tabGlideVelocity = (e.X - _tabDragLastX) / (float)elapsed;
+                _tabDragLastX = e.X;
+                _tabDragLastTick = now;
+
+                _tabScroll = Math.Max(0, _tabDragScroll - dx);
+                LayoutTabs();
+                _header.Invalidate();
+                return;
+            }
+        }
+
         var hit = TabHitTest(e.Location);
         var hoverTab = hit.IsPlus ? -2 : hit.Index;
         var hoverClose = hit.IsClose ? hit.Index : -1;
@@ -1165,6 +1327,23 @@ internal sealed class WebShell : Form
         {
             return;
         }
+
+        var wasDragging = _tabDragging;
+        _tabDragCandidate = false;
+        _tabDragging = false;
+
+        if (wasDragging)
+        {
+            // 甩一把：松手后按速度继续滑一小段
+            if (Math.Abs(_tabGlideVelocity) >= 0.05f)
+            {
+                _tabGlideTimer.Start();
+            }
+
+            _header.Cursor = Cursors.Hand;
+            return;
+        }
+
 
         var hit = TabHitTest(e.Location);
         if (hit.IsPlus)
@@ -1214,6 +1393,14 @@ internal sealed class WebShell : Form
         LayoutTabs();
 
         if (_plusRect.Contains(point))
+        {
+            return true;
+        }
+
+        // 溢出时整条标签带都吃掉点击，否则空白处会变成拖动窗口，没法滑动标签。
+        if (_hasOverflow &&
+            point.Y >= _tabStripTop && point.Y <= _tabStripTop + S(TabHeight) &&
+            point.X >= _tabsStart && point.X <= _tabsClipRight)
         {
             return true;
         }
@@ -1908,6 +2095,7 @@ internal sealed class WebShell : Form
             Fluent.Changed -= OnFluentChanged;
             _spinTimer.Dispose();
             _addressTimer.Dispose();
+            _tabGlideTimer.Dispose();
             _collapse?.Dispose();
             _minimize?.Dispose();
             _maximize?.Dispose();
