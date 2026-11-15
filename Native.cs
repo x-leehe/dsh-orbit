@@ -139,6 +139,26 @@ internal static class Native
         IntPtr hSection,
         uint offset);
 
+    // ---- 窗口闪动（前台权限被拒时提示用户）----
+    public const uint FLASHW_ALL = 0x00000003;
+    public const uint FLASHW_TIMERNOFG = 0x0000000C;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct FLASHWINFO
+    {
+        public uint cbSize;
+        public IntPtr hwnd;
+        public uint dwFlags;
+        public uint uCount;
+        public uint dwTimeout;
+    }
+
+    [DllImport("user32.dll")]
+    public static extern bool FlashWindowEx(ref FLASHWINFO info);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetForegroundWindow();
+
     // ---- Windows 11 圆角 ----
     private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
     private const int DWMWCP_ROUND = 2;

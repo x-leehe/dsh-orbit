@@ -1827,16 +1827,30 @@ internal sealed class WebShell : Form
         }
     }
 
-    /// <summary>先用 topmost 顶一下再恢复，确保第一次点击就能看到窗口。</summary>
+    /// <summary>
+    /// 把窗口带到前台，但**绝不置顶**。
+    /// 以前这里是「先 HWND_TOPMOST 再 NOTOPMOST」的 hack，一旦中途失败窗口就永久压在所有程序上面，
+    /// 这跟桌面挂件的置顶语义是两回事。现在改用 SetForegroundWindow + 失败时闪任务栏。
+    /// </summary>
     private void BringToFrontTemporarily()
     {
         try
         {
-            Native.SetWindowPos(Handle, Native.HWND_TOPMOST, 0, 0, 0, 0,
-                Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
-            Native.SetWindowPos(Handle, Native.HWND_NOTOPMOST, 0, 0, 0, 0,
-                Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
             _ = Native.SetForegroundWindow(Handle);
+
+            // 前台权限被拒时，闪一下任务栏按钮提示，而不是把窗口钉在最上层。
+            if (Native.GetForegroundWindow() != Handle)
+            {
+                var info = new Native.FLASHWINFO
+                {
+                    hwnd = Handle,
+                    dwFlags = Native.FLASHW_ALL | Native.FLASHW_TIMERNOFG,
+                    uCount = 3,
+                    dwTimeout = 0,
+                };
+                info.cbSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf<Native.FLASHWINFO>();
+                _ = Native.FlashWindowEx(ref info);
+            }
         }
         catch
         {
