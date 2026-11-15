@@ -687,10 +687,17 @@ internal sealed class WebShell : Form
         _tabStripTop = rowY;
         LayoutTabs();
 
-        // 工具条：地址栏左右各 12 内边距，TextField 32 高、上下各 2；
-        // 刷新 / 在浏览器打开两个按钮挪进地址栏内部右侧，地址文字让出它们的宽度。
-        _addressChrome = new Rectangle(S(12), S(2), Math.Max(S(80), width - (2 * S(12))), S(32));
-        var fieldButton = S(28);
+        // 工具条：地址栏左边缘和标签条对齐（不要横贯整窗），右留 12；高 30，上下各留 3。
+        // 刷新 / 在浏览器打开两个按钮在地址栏内部右侧，地址文字让出它们的宽度。
+        var fieldLeft = S(12);
+        var fieldRight = width - S(12);
+        _addressChrome = new Rectangle(
+            fieldLeft,
+            S(3),
+            Math.Max(S(120), fieldRight - fieldLeft),
+            S(30));
+
+        var fieldButton = S(26);
         var fieldPad = S(6);
         _externalRect = new Rectangle(
             _addressChrome.Right - fieldPad - fieldButton,
@@ -704,7 +711,7 @@ internal sealed class WebShell : Form
             fieldButton);
 
         var preferred = _address.PreferredHeight;
-        var textLeft = _addressChrome.X + S(10);
+        var textLeft = _addressChrome.X + S(12);
         var textRight = _refreshRect.X - S(8);
         _address.Bounds = new Rectangle(
             textLeft,
@@ -919,7 +926,9 @@ internal sealed class WebShell : Form
             null,
             _address.Focused,
             _addressHover,
-            _scale);
+            _scale,
+            Fluent.RCard,
+            12f);
 
         // 刷新 / 在浏览器打开：画在地址框内部右侧，悬停时叠 8% 状态层。
         var iconSize = 16f * _scale;

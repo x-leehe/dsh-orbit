@@ -947,24 +947,28 @@ internal static class Fluent
         string? placeholder,
         bool focused,
         bool hovered,
-        float scale = 1f)
+        float scale = 1f,
+        float radius = RControl,
+        float textInset = 11f)
     {
-        using var path = Rounded(rect, RControl);
+        using var path = Rounded(rect, radius);
         Fill(g, path, hovered ? ControlFillHover : ControlFill);
         Stroke(g, path, focused ? StrokeStrong : StrokeColor, 1f);
 
         if (focused)
         {
-            var line = new RectangleF(rect.X + 1, rect.Bottom - 2.5f, rect.Width - 2, 2f);
+            var state = g.Save();
+            g.SetClip(path, CombineMode.Intersect);
             using var brush = new SolidBrush(AccentFill);
-            g.FillRectangle(brush, line);
+            g.FillRectangle(brush, rect.X, rect.Bottom - (2 * scale), rect.Width, 2 * scale);
+            g.Restore(state);
         }
 
         var shown = string.IsNullOrEmpty(text) ? null : text;
         var color = shown is null ? TextTertiary : TextPrimary;
         var label = shown ?? placeholder ?? string.Empty;
         Text(g, label, Font(TextRole.Body, false, scale), color,
-            new RectangleF(rect.X + 11f, rect.Y, rect.Width - 22f, rect.Height),
+            new RectangleF(rect.X + textInset, rect.Y, rect.Width - (2 * textInset), rect.Height),
             StringAlignment.Near, StringTrimming.EllipsisCharacter);
     }
 
