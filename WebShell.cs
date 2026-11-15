@@ -1568,6 +1568,10 @@ internal sealed class WebShell : Form
     {
         base.OnDpiChanged(e);
         ApplyFluentChrome();
+        // 远程会话会临时把 DPI 改成 125%，这里必须按新的 DeviceDpi 重排一遍。
+        ApplyBounds();
+        _header.Invalidate();
+        _toolbar.Invalidate();
     }
 
     protected override void OnResize(EventArgs e)

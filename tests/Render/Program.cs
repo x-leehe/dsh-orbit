@@ -114,10 +114,16 @@ internal static class Program
             $"collapseX={collapse.Left} client={shell.ClientSize}");
 
         Report("expanded");
-        toggle.Invoke(shell, null);
+
+        // 和真实点击同一条处理链：HeaderButton.OnMouseUp → _action() → ToggleAddressBar
+        var onMouseUp = typeof(Control).GetMethod("OnMouseUp", Flags)!;
+        void Click(Control target) => onMouseUp.Invoke(
+            target, new object[] { new MouseEventArgs(MouseButtons.Left, 1, 5, 5, 0) });
+
+        Click(collapse);
         layout.Invoke(shell, new object[] { 1280, 860 });
         Report("collapsed");
-        toggle.Invoke(shell, null);
+        Click(collapse);
         layout.Invoke(shell, new object[] { 1280, 860 });
         Report("expanded2");
         shell.Dispose();
