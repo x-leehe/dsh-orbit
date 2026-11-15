@@ -10,6 +10,7 @@
 [![AIGC](https://img.shields.io/badge/code-AI--generated-8CB8FF.svg)](AGENTS.md)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-7AAAFF.svg)](#下载)
 [![.NET](https://img.shields.io/badge/.NET-10-512BD4.svg)](https://dotnet.microsoft.com)
+[![Design](https://img.shields.io/badge/design-WinUI%203%20%C3%97%20Material%203-7AAAFF.svg)](docs/design-fluent.md)
 
 </div>
 
@@ -19,25 +20,41 @@
 
 - 卡片显示端口、插件数、运行时长、内存/CPU、余额和今日已用；
 - 点地址在自带的浏览器窗口里打开 DSH，而不是跳系统浏览器；
-- 托盘菜单负责启动/停止/重启、层级、贴边隐藏、开机启动。
+- 托盘菜单负责启动/停止/重启、层级、贴边隐藏、开机启动；
+- 界面按 **WinUI 3（Fluent）** 规范重画，融合少量 **Material 3**，跟随系统浅色/深色与系统强调色。
 
 ## 截图
 
-**Web 外壳**（多标签页、地址栏、macOS 风格红绿灯）：
+**Web 外壳**（WinUI 3 式标题栏、多标签、macOS 风格红绿灯）：
 
 <img src="docs/shell.png" width="860"/>
 
-**新标签页**（原生 C# 绘制，不是网页）：
+**浅色主题**（同一套界面跟随系统深浅色）：
+
+<img src="docs/shell-light.png" width="860"/>
+
+**新标签页**（原生 C# 绘制，不是网页；Fluent + Material 3 磁贴）：
 
 <img src="docs/shell-start.png" width="860"/>
 
-**挂件卡片**：
+**挂件卡片**（深色 / 浅色）：
 
-<img src="docs/preview-running.png" width="420"/>
+<img src="docs/preview-running.png" width="420"/> <img src="docs/preview-running-light.png" width="420"/>
 
 **托盘菜单**（运行中第一格是「打开」；停止时会换成可点的「启动」）：
 
-<a><img src="docs/menu.png" width="240"/></a> <img src="docs/menu-stopped.png" width="240"/>
+<img src="docs/menu.png" width="240"/> <img src="docs/menu-stopped.png" width="240"/>
+
+## 界面
+
+界面语言取自 [WinUI 3](https://learn.microsoft.com/windows/apps/winui/winui3)（Fluent）与 [Material 3](https://m3.material.io/)：
+
+- 圆角只有四档：控件 `4`、卡片/浮出层 `8`、磁贴 `16`、药丸 `999`；
+- 版式走 WinUI 的 `Caption 12 / Body 14 / Subtitle 20 / Title 28` 阶梯，字体 `Segoe UI Variable`；
+- 配色跟随系统深浅色与**系统强调色**，菜单「外观」里可强制浅色或深色；
+- 悬停/按下用 8%/10% 状态层（M3），浮层用抬升阴影，磁贴悬停抬升一级。
+
+全部令牌与绘制原语集中在 `Fluent.cs`，完整规范见 [docs/design-fluent.md](docs/design-fluent.md)。
 
 ## 功能
 
@@ -58,6 +75,8 @@
 - 打开 / 停止 / 重启
 - 置底 / 置顶 / 普通
 - 开机启动三态：停用 / 启用（只起挂件）/ 全自动（连 `dsh web` 一起拉起）
+- 外观三态：跟随系统 / 浅色 / 深色
+- 键盘操作：↑↓ 移动、Enter 触发、Esc 关闭
 - 锁定穿透、贴边隐藏、外壳关闭行为、复制登录地址、打开日志
 
 ## 下载
@@ -110,18 +129,24 @@ dotnet build -c Release            # 编译
 .\build.ps1                        # 产出 dist\DSH-Orbit.exe 和 dist-lite\DSH-Orbit.exe
 ```
 
+单元测试（纯逻辑：SVG 路径解析、颜色/缓动、余额时段、登录链接、菜单状态）：
+
+```powershell
+dotnet test tests/Unit/Unit.csproj -c Release
+```
+
 冒烟测试（会自动建 `~/.dsh/profiles/widgettest` 并起一个隔离实例）：
 
 ```powershell
 dotnet run --project tests/Harness -c Release
 ```
 
-生成图标与预览图：
+生成图标与截图（`Render` 会把每个界面渲成浅色/深色两套）：
 
 ```powershell
 dotnet run --project tools/IconGen -c Release -- .
-dotnet run --project tests/Render -c Release -- docs
-dotnet run --project tests/Render -c Release -- docs --icons
+dotnet run --project tests/Render -c Release -- artifacts/gallery
+dotnet run --project tests/Render -c Release -- artifacts/gallery --only menu
 ```
 
 ## 项目结构
@@ -129,16 +154,22 @@ dotnet run --project tests/Render -c Release -- docs --icons
 ```
 DshOrbit.csproj        主工程（net10.0-windows, WinForms, 单文件发布）
 Program.cs             入口：单实例、命令行开关
+Fluent.cs              设计令牌与绘制原语（WinUI 3 × Material 3）
+FluentControls.cs      Fluent 按钮 / 输入框（对话框用）
 WidgetForm.cs          挂件卡片（分层窗口 + 自绘）
 WidgetApp.cs           状态机：探测、启停、托盘、外壳、管道命令
 WebShell.cs            WebView2 外壳（自绘标题栏 + 多标签）
 StartPage.cs           新标签页（原生绘制）
 TrayMenuForm.cs        托盘右键菜单
+AddEngineDialog.cs     添加搜索引擎对话框
 DshServices.cs         dsh 发现 / 启动 / 插件统计
 Balance.cs             DeepSeek 余额与今日用量
 LoopbackAuthServer.cs  本地登录中转
 Icons.cs / SvgPath.cs / LucideData.cs / OrbitMark.cs / DshMark.cs   图标与标志
-tests/                 冒烟测试与离屏渲染
+docs/design-fluent.md  界面规范（令牌、版式、每个界面的规格）
+tests/Unit/            单元测试（xUnit）
+tests/Harness/         冒烟测试（起隔离 dsh 实例）
+tests/Render/          离屏渲染，产出浅/深两套截图
 tools/                 图标生成、Lucide 数据抓取
 ```
 
@@ -163,7 +194,9 @@ tools/                 图标生成、Lucide 数据抓取
 - **[FlClash](https://github.com/chen08209/FlClash)** — 交互与视觉参考（卡片式布局、贴边隐藏、托盘菜单的组织方式）。
   **未使用其任何代码**（FlClash 为 GPL-3.0，本项目为 MIT）。
 - **[.NET](https://dotnet.microsoft.com)** / WinForms — 运行时与 UI 框架。
-- **HarmonyOS Sans SC** — 界面字体；仅在系统已安装时使用，仓库不打包字体文件。
+- **[WinUI 3 设计规范](https://learn.microsoft.com/windows/apps/winui/winui3)**（MIT 文档）— 几何、版式、间距、配色语言的依据。
+- **[Material 3](https://m3.material.io/)**（Apache-2.0）— 状态层、抬升、形状阶梯的参考。
+- **Segoe UI Variable** — 界面字体（Windows 11 系统自带，仓库不打包字体文件）。
 
 ## License
 
