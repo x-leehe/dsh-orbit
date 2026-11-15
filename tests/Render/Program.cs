@@ -4,15 +4,85 @@ using System.Windows.Forms;
 
 namespace DshOrbit;
 
-/// <summary>用真实的 WidgetForm 绘制逻辑离屏渲染两种状态，产出文档截图。</summary>
+/// <summary>
+/// 离屏渲染真实界面，产出文档截图与设计自查图。
+/// 用法：
+///   RenderPreview.exe &lt;输出目录&gt;                 挂件 + 菜单 + 新标签页（浅/深）
+///   RenderPreview.exe &lt;目录&gt; --only menu           只渲染某一面（widget/menu/start/dialog/shell/tokens）
+///   RenderPreview.exe &lt;目录&gt; --shell &lt;url&gt;        截取真实外壳窗口
+///   RenderPreview.exe &lt;目录&gt; --icons               图标对照表
+/// </summary>
 internal static class Program
 {
+    private static readonly AppTheme[] Themes = [AppTheme.Light, AppTheme.Dark];
+
+    private static string ThemeName(AppTheme theme) => theme == AppTheme.Light ? "light" : "dark";
+
     [STAThread]
     private static void Main(string[] args)
     {
-        var outputDir = args.Length > 0 ? args[0] : ".";
+        var outputDir = args.Length > 0 && !args[0].StartsWith("--", StringComparison.Ordinal)
+            ? args[0]
+            : ".";
+        Directory.CreateDirectory(outputDir);
         ApplicationConfiguration.Initialize();
 
+        var onlyIndex = Array.IndexOf(args, "--only");
+        var only = onlyIndex >= 0 && onlyIndex + 1 < args.Length ? args[onlyIndex + 1] : null;
+
+        if (args.Contains("--icons"))
+        {
+            DrawIconSheet(Path.Combine(outputDir, "icons.png"));
+            Console.WriteLine("saved icons.png");
+            return;
+        }
+
+        var shellIndex = Array.IndexOf(args, "--shell");
+        var shellUrl = shellIndex >= 0 && shellIndex + 1 < args.Length ? args[shellIndex + 1] : null;
+
+        foreach (var theme in Themes)
+        {
+            Fluent.Init(theme);
+            var suffix = ThemeName(theme);
+
+            if (only is null or "tokens")
+            {
+                RenderTokens(Path.Combine(outputDir, $"tokens-{suffix}.png"));
+            }
+
+            if (only is null or "widget")
+            {
+                RenderWidget(outputDir, suffix);
+            }
+
+            if (only is null or "menu")
+            {
+                RenderMenu(outputDir, suffix);
+            }
+
+            if (only is null or "start")
+            {
+                RenderStartPage(outputDir, suffix);
+            }
+
+            if (only is null or "dialog")
+            {
+                RenderDialog(outputDir, suffix);
+            }
+
+            if (only == "shell" || (only is null && shellUrl is not null))
+            {
+                RenderShell(outputDir, suffix, shellUrl ?? "about:blank");
+            }
+        }
+
+        Application.ExitThread();
+    }
+
+    // ---------------------------------------------------------------- 挂件
+
+    private static void RenderWidget(string outputDir, string suffix)
+    {
         var config = new WidgetConfig { AlwaysBottom = false, AlwaysOnTop = true, ClickThrough = false };
         using var form = new WidgetForm(config);
         form.Show();
@@ -29,7 +99,8 @@ internal static class Program
             MemoryBytes = 268L * 1024 * 1024,
             CpuPercent = 3,
             PluginTotal = 1,
-            PluginDisabled = 0,    PluginNames = "dsh-qqbot",
+            PluginDisabled = 0,
+            PluginNames = "dsh-qqbot",
             Balance = 24.45m,
             SpentToday = 0.6400m,
             OffPeak = false,
@@ -41,71 +112,23 @@ internal static class Program
             Profile = "web",
             Version = "0.2.1-rc.5",
             PluginTotal = 1,
-            PluginDisabled = 0,    PluginNames = "dsh-qqbot",
+            PluginDisabled = 0,
+            PluginNames = "dsh-qqbot",
             Balance = 24.45m,
             SpentToday = 0.6400m,
             OffPeak = true,
         };
 
-        Save(form, running, Path.Combine(outputDir, "preview-running.png"));
-        Save(form, stopped, Path.Combine(outputDir, "preview-stopped.png"));
+        Save(form, running, Path.Combine(outputDir, $"preview-running-{suffix}.png"));
+        Save(form, stopped, Path.Combine(outputDir, $"preview-stopped-{suffix}.png"));
+        form.Close();
+    }
 
-        if (args.Contains("--icons"))
-        {
-            DrawIconSheet(Path.Combine(outputDir, "icons.png"));
-            Console.WriteLine("saved icons.png");
-            return;
-        }
+    // ---------------------------------------------------------------- 菜单
 
-        var shellIndex = Array.IndexOf(args, "--shell");
-        if (shellIndex >= 0 && shellIndex + 1 < args.Length)
-        {
-            var url = args[shellIndex + 1];
-            var shell = new WebShell(url, ShellCloseMode.Hide);
-            shell.Show();
-            for (var i = 0; i < 700; i++)
-            {
-                Application.DoEvents();
-                Thread.Sleep(20);
-            }
-
-            using var shot = new Bitmap(shell.Width, shell.Height);
-            using (var g = Graphics.FromImage(shot))
-            {
-                g.CopyFromScreen(shell.Left, shell.Top, 0, 0, shell.Size);
-            }
-
-            shot.Save(Path.Combine(outputDir, "shell.png"), ImageFormat.Png);
-            Console.WriteLine("saved shell.png");
-            shell.ForceClose();
-            return;
-        }
-
-        if (args.Contains("--show-menu"))
-        {
-            var liveState = new MenuState(true, false, true, false, true, false, true, true, true, AutoStartMode.FullAuto);
-            using var live = new TrayMenuForm(liveState, _ => { });
-            Cursor.Position = new Point(700, 500);
-            live.ShowAtCursor();
-            for (var i = 0; i < 40; i++)
-            {
-                Application.DoEvents();
-                Thread.Sleep(15);
-            }
-
-            using var shot = new Bitmap(live.Width, live.Height);
-            using (var g = Graphics.FromImage(shot))
-            {
-                g.CopyFromScreen(live.Left, live.Top, 0, 0, live.Size);
-            }
-
-            shot.Save(Path.Combine(outputDir, "menu-live.png"), ImageFormat.Png);
-            Console.WriteLine("saved menu-live.png");
-            live.Close();
-            return;
-        }
-
-        var menuState = new MenuState(
+    private static void RenderMenu(string outputDir, string suffix)
+    {
+        var live = new MenuState(
             Running: true,
             Starting: false,
             HasUrl: true,
@@ -116,15 +139,15 @@ internal static class Program
             Visible: true,
             ShellHide: true,
             AutoStart: AutoStartMode.FullAuto);
-        using (var menu = new TrayMenuForm(menuState, _ => { }))
+
+        using (var menu = new TrayMenuForm(live, _ => { }))
         {
             using var bitmap = menu.Snapshot();
-            bitmap?.Save(Path.Combine(outputDir, "menu.png"), ImageFormat.Png);
-            Console.WriteLine("saved menu.png");
+            bitmap?.Save(Path.Combine(outputDir, $"menu-{suffix}.png"), ImageFormat.Png);
+            Console.WriteLine($"saved menu-{suffix}.png");
         }
 
-        // 停止态：第一格应该是「启动」且可点
-        var stoppedState = new MenuState(
+        var stopped = new MenuState(
             Running: false,
             Starting: false,
             HasUrl: false,
@@ -136,15 +159,200 @@ internal static class Program
             ShellHide: false,
             AutoStart: AutoStartMode.Disabled);
 
-        using (var menu = new TrayMenuForm(stoppedState, _ => { }))
+        using (var menu = new TrayMenuForm(stopped, _ => { }))
         {
             using var bitmap = menu.Snapshot();
-            bitmap?.Save(Path.Combine(outputDir, "menu-stopped.png"), ImageFormat.Png);
-            Console.WriteLine("saved menu-stopped.png");
+            bitmap?.Save(Path.Combine(outputDir, $"menu-stopped-{suffix}.png"), ImageFormat.Png);
+            Console.WriteLine($"saved menu-stopped-{suffix}.png");
+        }
+    }
+
+    // ---------------------------------------------------------------- 新标签页
+
+    private static void RenderStartPage(string outputDir, string suffix)
+    {
+        var state = ShellState.CreateDefault();
+        state.History =
+        [
+            new HistoryEntry { Title = "DeepSeek 开放平台", Url = "https://platform.deepseek.com/usage", VisitedAt = DateTime.Now },
+            new HistoryEntry { Title = "GitHub · x-leehe/dsh-orbit", Url = "https://github.com/x-leehe/dsh-orbit", VisitedAt = DateTime.Now.AddMinutes(-8) },
+            new HistoryEntry { Title = "WinUI 3 文档", Url = "https://learn.microsoft.com/windows/apps/winui/winui3", VisitedAt = DateTime.Now.AddMinutes(-20) },
+            new HistoryEntry { Title = "Material 3", Url = "https://m3.material.io/", VisitedAt = DateTime.Now.AddMinutes(-40) },
+            new HistoryEntry { Title = "Lucide Icons", Url = "https://lucide.dev/icons/", VisitedAt = DateTime.Now.AddHours(-2) },
+            new HistoryEntry { Title = "Bun 文档", Url = "https://bun.sh/docs", VisitedAt = DateTime.Now.AddHours(-5) },
+            new HistoryEntry { Title = "Visual Studio 下载", Url = "https://visualstudio.microsoft.com/", VisitedAt = DateTime.Now.AddDays(-1) },
+        ];
+
+        using var host = new Form
+        {
+            FormBorderStyle = FormBorderStyle.None,
+            StartPosition = FormStartPosition.Manual,
+            Location = new Point(-6000, -6000),
+            ClientSize = new Size(1240, 780),
+            ShowInTaskbar = false,
+        };
+
+        var page = new StartPage(state, "http://127.0.0.1:3080/") { Dock = DockStyle.Fill };
+        host.Controls.Add(page);
+        host.Show();
+        Pump(120);
+
+        using var bitmap = new Bitmap(page.Width, page.Height);
+        page.DrawToBitmap(bitmap, new Rectangle(0, 0, page.Width, page.Height));
+        bitmap.Save(Path.Combine(outputDir, $"start-{suffix}.png"), ImageFormat.Png);
+        Console.WriteLine($"saved start-{suffix}.png");
+
+        host.Close();
+        host.Dispose();
+    }
+
+    // ---------------------------------------------------------------- 对话框
+
+    private static void RenderDialog(string outputDir, string suffix)
+    {
+        using var dialog = new AddEngineDialog
+        {
+            StartPosition = FormStartPosition.Manual,
+            Location = new Point(-6000, -6000),
+            ShowInTaskbar = false,
+        };
+        dialog.Show();
+        Pump(120);
+
+        using var bitmap = new Bitmap(dialog.Width, dialog.Height);
+        dialog.DrawToBitmap(bitmap, new Rectangle(0, 0, dialog.Width, dialog.Height));
+        bitmap.Save(Path.Combine(outputDir, $"dialog-{suffix}.png"), ImageFormat.Png);
+        Console.WriteLine($"saved dialog-{suffix}.png");
+        dialog.Close();
+    }
+
+    // ---------------------------------------------------------------- 外壳
+
+    private static void RenderShell(string outputDir, string suffix, string url)
+    {
+        var shell = new WebShell(url, ShellCloseMode.Hide);
+        shell.Show();
+        Pump(900);
+
+        using var bitmap = new Bitmap(shell.Width, shell.Height);
+        using (var g = Graphics.FromImage(bitmap))
+        {
+            g.CopyFromScreen(shell.Left, shell.Top, 0, 0, shell.Size);
         }
 
-        form.Close();
-        Application.ExitThread();
+        bitmap.Save(Path.Combine(outputDir, $"shell-{suffix}.png"), ImageFormat.Png);
+        Console.WriteLine($"saved shell-{suffix}.png");
+        shell.ForceClose();
+    }
+
+    // ---------------------------------------------------------------- 令牌自查表
+
+    private static void RenderTokens(string path)
+    {
+        const int width = 900;
+        const int height = 760;
+        using var bitmap = new Bitmap(width, height);
+        using var g = Graphics.FromImage(bitmap);
+        Fluent.AntiAlias(g);
+        g.Clear(Fluent.Mica);
+
+        // 卡片 + 海拔
+        Fluent.Card(g, new RectangleF(20, 20, 400, 210), Fluent.RCard, 3);
+        Fluent.Card(g, new RectangleF(440, 20, 200, 100), Fluent.RCard, 1);
+        Fluent.Card(g, new RectangleF(440, 130, 200, 100), Fluent.RCard, 2);
+        Fluent.Card(g, new RectangleF(660, 20, 220, 210), Fluent.RCard, 0);
+
+        // 版式阶梯
+        var y = 44f;
+        foreach (var (role, name) in new[]
+                 {
+                     (TextRole.Display, "Display 40/52"),
+                     (TextRole.Title, "Title 28/36"),
+                     (TextRole.Subtitle, "Subtitle 20/28"),
+                     (TextRole.Body, "Body 14/20"),
+                     (TextRole.Caption, "Caption 12/16"),
+                 })
+        {
+            Fluent.Text(g, name, role, true, Fluent.TextPrimary, new RectangleF(36, y, 380, 34));
+            y += role == TextRole.Display ? 56 : Fluent.LineHeight(role) + 2;
+        }
+
+        // 按钮
+        Fluent.Button(g, new RectangleF(440, 250, 110, 32), "标准按钮", SurfaceRole.Standard);
+        Fluent.Button(g, new RectangleF(560, 250, 110, 32), "强调按钮", SurfaceRole.Accent);
+        Fluent.Button(g, new RectangleF(680, 250, 110, 32), "悬停", SurfaceRole.Standard, VisualState.Hover);
+        Fluent.Button(g, new RectangleF(800, 250, 80, 32), "禁用", SurfaceRole.Standard, VisualState.Disabled);
+
+        Fluent.Button(g, new RectangleF(440, 292, 130, 32), "带图标", SurfaceRole.Standard, VisualState.Rest, "refresh");
+        Fluent.Button(g, new RectangleF(580, 292, 130, 32), "危险", SurfaceRole.Danger, VisualState.Hover, "trash-2");
+
+        // 图标按钮
+        Fluent.IconButton(g, new RectangleF(730, 292, 32, 32), "refresh");
+        Fluent.IconButton(g, new RectangleF(770, 292, 32, 32), "external-link", VisualState.Hover);
+        Fluent.IconButton(g, new RectangleF(810, 292, 32, 32), "x", VisualState.Pressed);
+
+        // 药丸
+        Fluent.Pill(g, new RectangleF(20, 260, 96, 24), "运行中", Fluent.Success, Fluent.Mix(Fluent.Layer, Fluent.Success, 0.18f), true);
+        Fluent.Pill(g, new RectangleF(126, 260, 96, 24), "已停止", Fluent.TextTertiary, Fluent.Mix(Fluent.Layer, Fluent.TextTertiary, 0.12f), true);
+
+        // 分段
+        Fluent.Segmented(g, new RectangleF(20, 300, 300, 32), ["置底", "置顶", "普通"], 1, 2);
+        Fluent.Segmented(g, new RectangleF(20, 344, 300, 32), ["跟随系统", "浅色", "深色"], 0);
+
+        // 菜单行
+        Fluent.MenuRow(g, new RectangleF(20, 392, 300, 36), "lock", "锁定穿透", "开");
+        Fluent.MenuRow(g, new RectangleF(20, 428, 300, 36), "eye", "隐藏挂件", null, VisualState.Hover);
+        Fluent.MenuRow(g, new RectangleF(20, 464, 300, 36), "power", "退出", null, VisualState.Rest, Fluent.Critical);
+
+        // 输入框
+        Fluent.TextBox(g, new RectangleF(440, 344, 400, 32), "127.0.0.1:3080", "搜索，或输入网址后回车", false, false);
+        Fluent.TextBox(g, new RectangleF(440, 384, 400, 32), "", "聚焦状态", true, false);
+        Fluent.TextBox(g, new RectangleF(440, 424, 400, 32), "", "悬停状态", false, true);
+
+        // 磁贴
+        Fluent.Tile(g, new RectangleF(440, 470, 180, 120));
+        Fluent.Tile(g, new RectangleF(630, 470, 180, 120), VisualState.Hover);
+        Fluent.Tile(g, new RectangleF(820, 470, 60, 60));
+
+        // 分隔线
+        Fluent.Divider(g, new RectangleF(20, 512, 300, 1));
+        Fluent.SectionLabel(g, new RectangleF(20, 524, 300, 20), "分组标题");
+
+        // 文本层级
+        Fluent.Text(g, "TextPrimary 主要文字", TextRole.Body, false, Fluent.TextPrimary, new RectangleF(20, 552, 300, 20));
+        Fluent.Text(g, "TextSecondary 次要文字", TextRole.Body, false, Fluent.TextSecondary, new RectangleF(20, 572, 300, 20));
+        Fluent.Text(g, "TextTertiary 三级文字", TextRole.Body, false, Fluent.TextTertiary, new RectangleF(20, 592, 300, 20));
+        Fluent.Text(g, "TextDisabled 禁用文字", TextRole.Body, false, Fluent.TextDisabled, new RectangleF(20, 612, 300, 20));
+
+        Fluent.Text(g, $"主题 {(Fluent.IsDark ? "Dark" : "Light")} · 强调色 {Fluent.AccentFill.Name}",
+            TextRole.Caption, true, Fluent.TextSecondary, new RectangleF(20, 660, 500, 20));
+        Fluent.Text(g, $"{Fluent.BodyFamily} / {Fluent.StrongFamily} / {Fluent.DisplayStrongFamily}",
+            TextRole.Caption, false, Fluent.TextTertiary, new RectangleF(20, 680, 700, 20));
+
+        bitmap.Save(path, ImageFormat.Png);
+        Console.WriteLine($"saved {Path.GetFileName(path)}");
+    }
+
+    // ---------------------------------------------------------------- 工具
+
+    private static void Save(WidgetForm form, StatusSnapshot snapshot, string path)
+    {
+        form.SetStatus(snapshot);
+        form.Refresh();
+        Pump(30);
+        using var bitmap = form.Snapshot();
+        bitmap?.Save(path, ImageFormat.Png);
+        Console.WriteLine($"saved {Path.GetFileName(path)}");
+    }
+
+    private static void Pump(int ms)
+    {
+        var until = Environment.TickCount64 + ms;
+        while (Environment.TickCount64 < until)
+        {
+            Application.DoEvents();
+            Thread.Sleep(10);
+        }
     }
 
     /// <summary>把 LucideData 里的图标画成一张对照表，确认几何正确。</summary>
@@ -157,8 +365,7 @@ internal static class Program
         using var bitmap = new Bitmap(columns * cell, rows * cell);
         using var g = Graphics.FromImage(bitmap);
         g.Clear(Color.FromArgb(16, 20, 28));
-        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+        Fluent.AntiAlias(g);
 
         using var font = new Font("Segoe UI", 10, FontStyle.Regular, GraphicsUnit.Pixel);
         using var brush = new SolidBrush(Color.FromArgb(198, 208, 224));
@@ -175,16 +382,5 @@ internal static class Program
         }
 
         bitmap.Save(path, ImageFormat.Png);
-    }
-
-    private static void Save(WidgetForm form, StatusSnapshot snapshot, string path)
-    {
-        form.SetStatus(snapshot);
-        form.Refresh();
-        Application.DoEvents();
-
-        using var bitmap = form.Snapshot();
-        bitmap?.Save(path, ImageFormat.Png);
-        Console.WriteLine($"saved {path}");
     }
 }

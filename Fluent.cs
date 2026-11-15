@@ -620,9 +620,9 @@ internal static class Fluent
     {
         var (rings, alpha, spread, offsetY) = level switch
         {
-            1 => (6, 5, 1.2f, 1),
-            2 => (11, 4, 1.6f, 2),
-            3 => (17, 3, 2.0f, 3),
+            1 => (5, 4, 1.2f, 1),
+            2 => (9, 3, 1.6f, 2),
+            3 => (15, 2, 2.0f, 3),
             _ => (0, 0, 0f, 0),
         };
 
@@ -854,7 +854,7 @@ internal static class Fluent
             }
 
             Text(g, labels[i], Font(TextRole.Caption, active, scale),
-                active ? AccentText : TextSecondary,
+                active ? TextPrimary : TextSecondary,
                 cell, StringAlignment.Center, StringTrimming.EllipsisCharacter);
         }
     }
