@@ -81,11 +81,24 @@ dotnet run --project tests/Render -c Release -- artifacts/gallery --only menu
 - 提交信息用中文，`type: 简述`（`feat` / `fix` / `refactor` / `docs` / `chore`）。
 - 一次提交只做一件事；不要顺手格式化无关文件。
 
+## 发布（重要）
+
+**除非用户明确要求"发版 / 发布 / 打个 tag"，否则不要发 release。** 具体来说：
+
+- 不要 `git tag`、不要 `git push origin v*`，也不要跑 `gh release create`；
+- 打 tag 会自动触发 `.github/workflows/release.yml`，把二进制**公开**发布到 Releases，
+  还会改 `latest` 指向——这是对外可见的动作，不能顺手做；
+- 用户说"改完提交""推到 main"只包含提交与推送，**不包含发版**；
+- 用户明确要发版时，也不要替用户写发布说明后直接发布：先给草稿，或按用户指定的版本号来。
+
+日常开发只做到：改代码 → 本地构建 → `dotnet test tests/Unit` → 提交 → push main。
+
 ## 不要做的事
 
 - 不要引入 GPL/AGPL 代码（本项目是 MIT）。FlClash 只作交互参考，不复制它的代码。
 - 不要把 `~/.dsh/.credentials.yaml` 里的 secret 写进日志、配置文件或提交。
 - 不要"顺手"改 dsh 本身的行为；本项目只是客户端。
+- **不要未经要求打 tag / 发 release**（见上一节）。
 
 ## 已知限制
 
