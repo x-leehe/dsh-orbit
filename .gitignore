@@ -9,3 +9,6 @@ dist-lite/
 
 # 本机生成
 *.log
+
+# 离屏渲染产物（本地自查用）
+artifacts/

@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
@@ -11,33 +10,40 @@ namespace DshOrbit;
 /// <summary>
 /// Web 外壳：用 WebView2 内嵌 DSH Web UI，带简单的多标签页。
 ///
-/// 无边框自绘标题栏 + 标签条，拖动/缩放/最大化都自己处理；
+/// 外观按 docs/design-fluent.md §4.3 重塑为 WinUI 3（Fluent）TabView 式：
+///   48px 标题栏  — 品牌 + 标签（上圆角 8、底部 2px 强调色指示条）+ 工具按钮 + 红绿灯
+///   36px 工具条  — Mica 底 + Fluent.TextBox 地址栏
+///   余下         — WebView2 内容区
+///
+/// 无边框自绘标题栏，拖动/八向缩放/最大化都自己处理（WM_NCCALCSIZE + WM_NCHITTEST）；
 /// 关闭行为可配置为「隐藏（WebView2 留在后台）」或「直接关闭」。
 /// </summary>
 internal sealed class WebShell : Form
 {
-    private const int HeaderHeight = 44;
-    private const int TabStripHeight = 34;
-    private const int ResizeBorder = 7;
-    private const int DarkTitleBar = 20;
-    private const int CornerPreference = 33;
+    // ---------------------------------------------------------------- 尺寸（96 DPI 逻辑像素，实际一律经 S() 缩放）
+
+    private const int TitleBarHeight = 48;
+    private const int ToolbarHeight = 36;
+    private const int TabHeight = 32;
+    private const int ControlSize = 32;
+    private const int MinTabWidth = 132;
+    private const int MaxTabWidth = 196;
+
+    private const int ResizeGrip = 6;
     private const int MinWidth = 880;
     private const int MinHeight = 620;
-    private const int MaxTabWidth = 196;
-    private const int ResizeGrip = 6;
-    private const int PlusWidth = 34;
 
-    private static readonly Color HeaderBack = Color.FromArgb(20, 25, 34);
-    private static readonly Color TabStripBack = Color.FromArgb(17, 22, 30);
-    private static readonly Color ShellBack = Color.FromArgb(16, 20, 28);
-    private static readonly Color AddressBack = Color.FromArgb(28, 34, 46);
-    private static readonly Color TextPrimary = Color.FromArgb(226, 233, 244);
-    private static readonly Color TextDim = Color.FromArgb(198, 208, 224);
-    private static readonly Color TextMuted = Color.FromArgb(143, 160, 182);
-    private static readonly Color Accent = Color.FromArgb(122, 170, 255);
+    /// <summary>DWMWA_USE_IMMERSIVE_DARK_MODE（Win10 20H1+ / Win11）。</summary>
+    private const int DarkTitleBar = 20;
 
-    private readonly Panel _header;
-    private readonly Panel _addressHost;
+    /// <summary>DWMWA_WINDOW_CORNER_PREFERENCE。</summary>
+    private const int CornerPreference = 33;
+
+    private const string BrandText = "DSH-Orbit";
+    private const string AddressPlaceholder = "输入地址，回车访问";
+
+    private readonly TitleBarPanel _header;
+    private readonly EdgePanel _toolbar;
     private readonly TextBox _address;
     private readonly HeaderButton _refresh;
     private readonly HeaderButton _external;
@@ -45,48 +51,96 @@ internal sealed class WebShell : Form
     private readonly TrafficButton _maximize;
     private readonly TrafficButton _close;
 
-    private readonly Panel _tabStrip;
-    private readonly Panel _webHost;
+    private readonly EdgePanel _webHost;
     private readonly List<Tab> _tabs = new();
     private readonly ShellState _shellState = ShellStore.Load();
-    private readonly List<(Rectangle Bounds, int Index, bool IsClose)> _tabHits = new();
-    private Rectangle _plusRect;
+
+    // 标签几何：每次布局/命中测试前由 LayoutTabs() 重算，避免和鼠标位置错一帧。
+    private readonly List<RectangleF> _tabRects = new();
+    private readonly List<RectangleF> _closeRects = new();
+
+    // 测量文字用的离屏 Graphics（只量宽度，1×1 位图就够）。
+    private readonly Bitmap _measureSurface;
+    private readonly Graphics _measureGraphics;
+
+    private Rectangle _plusRect = Rectangle.Empty;
+    private Rectangle _addressChrome = Rectangle.Empty;
+    private float _scale = 1f;
+    private float _brandWidth;
+    private int _brandTextX;
+    private int _tabsStart;
+    private int _tabsRegionRight;
+    private int _tabsClipRight;
+    private int _tabStripTop;
+    private int _brandDividerX;
 
     private CoreWebView2Environment? _environment;
     private Tab? _active;
     private string _homeUrl;
     private bool _forcedClose;
+    private bool _ready;
     private int _hoverTab = -1;
+    private int _hoverClose = -1;
     private int _tabScroll;
-
-
+    private bool _addressHover;
 
     public WebShell(string url, ShellCloseMode closeMode)
     {
         _homeUrl = url;
         CloseMode = closeMode;
+        _scale = DeviceDpi / 96f;
+
+        _measureSurface = new Bitmap(1, 1);
+        _measureGraphics = Graphics.FromImage(_measureSurface);
 
         Text = "DSH-Orbit Web";
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(MinWidth, MinHeight);
         Size = new Size(1280, 860);
-        BackColor = ShellBack;
+        BackColor = Fluent.Mica;
         FormBorderStyle = FormBorderStyle.Sizable;
         KeyPreview = true;
         DoubleBuffered = true;
+        SetStyle(ControlStyles.ResizeRedraw, true);
 
-        // ---- 标题栏 ----
-        _header = new HitThroughPanel { BackColor = HeaderBack };
+        // ---- 标题栏（48px）：品牌 + 标签 + 工具按钮 + 红绿灯 ----
+        _header = new TitleBarPanel
+        {
+            BackColor = Fluent.Flyout,
+            Interactive = HeaderInteractive,
+        };
         _header.Paint += PaintHeader;
+        _header.MouseMove += HeaderMouseMove;
+        _header.MouseLeave += HeaderMouseLeave;
+        _header.MouseUp += HeaderMouseUp;
 
+        _refresh = new HeaderButton("刷新", () => ActiveTab?.Core?.Reload()) { Glyph = "refresh" };
+        _external = new HeaderButton("在浏览器打开", OpenExternal) { Glyph = "external" };
+        _close = new TrafficButton(TrafficButton.Dot.Close, "关闭", HideOrClose);
+        _minimize = new TrafficButton(TrafficButton.Dot.Minimize, "最小化", () => BeginInvoke(MinimizeWindow));
+        _maximize = new TrafficButton(TrafficButton.Dot.Maximize, "最大化", () => BeginInvoke(ToggleMaximize));
+
+        _header.Controls.Add(_refresh);
+        _header.Controls.Add(_external);
+        _header.Controls.Add(_minimize);
+        _header.Controls.Add(_maximize);
+        _header.Controls.Add(_close);
+
+        // ---- 工具条（36px）：Mica 底 + Fluent.TextBox 地址栏 ----
+        _toolbar = new EdgePanel { BackColor = Fluent.Mica };
+        _toolbar.Paint += PaintToolbar;
+        _toolbar.MouseEnter += (_, _) => UpdateAddressHover();
+        _toolbar.MouseLeave += (_, _) => UpdateAddressHover();
 
         _address = new TextBox
         {
             BorderStyle = BorderStyle.None,
-            BackColor = AddressBack,
-            ForeColor = TextDim,
-            Font = new Font("Segoe UI", 9.5f),
-            Text = url,
+            BackColor = Fluent.ControlFill,
+            ForeColor = Fluent.TextPrimary,
+            Font = Fluent.Font(TextRole.Body, false, _scale),
+            PlaceholderText = AddressPlaceholder,
+            // 地址框只在 Ctrl+L / 点击时拿焦点：窗口显示时不要抢焦点、也别把地址整段选中。
+            TabStop = false,
         };
         _address.KeyDown += (_, e) =>
         {
@@ -96,51 +150,26 @@ internal sealed class WebShell : Form
                 NavigateActive(_address.Text.Trim());
             }
         };
-
-        _addressHost = new Panel { BackColor = AddressBack, Padding = new Padding(10, 7, 10, 7) };
-        _addressHost.Controls.Add(_address);
-        _addressHost.Paint += PaintAddressHost;
-        _address.Dock = DockStyle.Fill;
-
-        _refresh = new HeaderButton("刷新", () => ActiveTab?.Core?.Reload()) { Glyph = "refresh" };
-        _external = new HeaderButton("在浏览器打开", OpenExternal) { Glyph = "external" };
-        _close = new TrafficButton(TrafficButton.Dot.Close, "关闭", HideOrClose);
-        _minimize = new TrafficButton(TrafficButton.Dot.Minimize, "最小化", () => BeginInvoke(MinimizeWindow));
-        _maximize = new TrafficButton(TrafficButton.Dot.Maximize, "最大化", () => BeginInvoke(ToggleMaximize));
-
-        _header.Controls.Add(_addressHost);
-        _header.Controls.Add(_refresh);
-        _header.Controls.Add(_external);
-        _header.Controls.Add(_minimize);
-        _header.Controls.Add(_maximize);
-        _header.Controls.Add(_close);
-
-        // ---- 标签条 ----
-        _tabStrip = new EdgePanel { BackColor = TabStripBack };
-        _tabStrip.Paint += PaintTabs;
-        _tabStrip.MouseMove += TabsMouseMove;
-        _tabStrip.MouseLeave += (_, _) =>
+        _address.GotFocus += (_, _) => _toolbar.Invalidate();
+        _address.LostFocus += (_, _) => _toolbar.Invalidate();
+        _address.MouseEnter += (_, _) => UpdateAddressHover();
+        _address.MouseLeave += (_, _) => UpdateAddressHover();
+        _toolbar.Controls.Add(_address);
+        _toolbar.MouseDown += (_, e) =>
         {
-            _hoverTab = -1;
-            _tabStrip.Invalidate();
-        };
-        _tabStrip.MouseUp += TabsMouseUp;
-        MouseWheel += (_, e) =>
-        {
-            if (!_tabStrip.Bounds.Contains(PointToClient(Cursor.Position)))
+            // 点在输入框左右内边距上也要能开始编辑。
+            if (e.Button == MouseButtons.Left && _addressChrome.Contains(e.Location))
             {
-                return;
+                _address.Focus();
+                _address.SelectionStart = _address.TextLength;
             }
-
-            _tabScroll -= e.Delta / 2;
-            _tabStrip.Invalidate();
         };
 
         // ---- 网页区域 ----
-        _webHost = new EdgePanel { BackColor = ShellBack };
+        _webHost = new EdgePanel { BackColor = Fluent.Mica };
 
         Controls.Add(_webHost);
-        Controls.Add(_tabStrip);
+        Controls.Add(_toolbar);
         Controls.Add(_header);
 
         Shown += async (_, _) =>
@@ -150,6 +179,8 @@ internal sealed class WebShell : Form
             await CreateTabAsync(_homeUrl);
         };
         FormClosing += OnFormClosing;
+        Deactivate += (_, _) => SetAddressHover(false);
+        MouseWheel += OnShellMouseWheel;
         KeyDown += (_, e) =>
         {
             if (e.Control && e.KeyCode == Keys.L)
@@ -170,6 +201,9 @@ internal sealed class WebShell : Form
                 HideOrClose();
             }
         };
+
+        _ready = true;
+        Fluent.Changed += OnFluentChanged;
     }
 
     /// <summary>关闭窗口时的行为：隐藏（WebView2 留在后台）或直接关闭（进程退出）。</summary>
@@ -206,9 +240,10 @@ internal sealed class WebShell : Form
         tab.Start.EngineChanged += _ => ShellStore.Save(_shellState);
         tab.Start.BackgroundChanged += _ => ShellStore.Save(_shellState);
         tab.Start.HistoryChanged += () => ShellStore.Save(_shellState);
-        tab.Start.Bounds = new Rectangle(ResizeGrip, ResizeGrip,
-            Math.Max(0, _webHost.ClientSize.Width - (2 * ResizeGrip)),
-            Math.Max(0, _webHost.ClientSize.Height - (2 * ResizeGrip)));
+        var grip = S(ResizeGrip);
+        tab.Start.Bounds = new Rectangle(grip, grip,
+            Math.Max(0, _webHost.ClientSize.Width - (2 * grip)),
+            Math.Max(0, _webHost.ClientSize.Height - (2 * grip)));
 
         _tabs.Add(tab);
         _webHost.Controls.Add(tab.Start);
@@ -242,14 +277,15 @@ internal sealed class WebShell : Form
 
     private async Task AttachViewAsync(Tab tab, string target)
     {
-        var view = new WebView2 { DefaultBackgroundColor = ShellBack };
+        var view = new WebView2 { DefaultBackgroundColor = Fluent.Mica };
         tab.View = view;
         _webHost.Controls.Add(view);
+        var grip = S(ResizeGrip);
         view.Bounds = new Rectangle(
-            ResizeGrip,
-            ResizeGrip,
-            Math.Max(0, _webHost.ClientSize.Width - (2 * ResizeGrip)),
-            Math.Max(0, _webHost.ClientSize.Height - (2 * ResizeGrip)));
+            grip,
+            grip,
+            Math.Max(0, _webHost.ClientSize.Width - (2 * grip)),
+            Math.Max(0, _webHost.ClientSize.Height - (2 * grip)));
 
         if (tab.Start is not null)
         {
@@ -270,11 +306,12 @@ internal sealed class WebShell : Form
             core.Settings.IsStatusBarEnabled = false;
             core.Settings.AreDefaultContextMenusEnabled = true;
             core.Settings.IsSwipeNavigationEnabled = false;
+            ApplyWebViewTheme(core);
 
             core.DocumentTitleChanged += (_, _) =>
             {
                 tab.Title = string.IsNullOrWhiteSpace(core.DocumentTitle) ? "DSH Web" : core.DocumentTitle;
-                _tabStrip.Invalidate();
+                RefreshTabStrip();
                 RecordHistory(tab.Url, tab.Title);
             };
             core.NavigationStarting += (_, e) =>
@@ -330,6 +367,7 @@ internal sealed class WebShell : Form
         var target = string.IsNullOrWhiteSpace(url) ? _homeUrl : url;
         var tab = new Tab { Url = target, Title = "DSH Web" };
         _tabs.Add(tab);
+        RefreshTabStrip();
         return AttachViewAsync(tab, target);
     }
 
@@ -474,7 +512,7 @@ internal sealed class WebShell : Form
         }
 
         _address.Text = tab.Url == "dsh://start" ? string.Empty : tab.Url;
-        _tabStrip.Invalidate();
+        RefreshTabStrip();
     }
 
     private void CloseTab(Tab? tab)
@@ -506,10 +544,12 @@ internal sealed class WebShell : Form
             AppPaths.Log($"关闭标签页失败：{ex.Message}");
         }
 
+        ResetTabHover();
+
         if (_tabs.Count == 0)
         {
             _active = null;
-            _tabStrip.Invalidate();
+            RefreshTabStrip();
             HideOrClose();
             return;
         }
@@ -519,7 +559,7 @@ internal sealed class WebShell : Form
             Activate(_tabs[Math.Clamp(index, 0, _tabs.Count - 1)]);
         }
 
-        _tabStrip.Invalidate();
+        RefreshTabStrip();
     }
 
     private void NavigateActive(string url)
@@ -549,7 +589,7 @@ internal sealed class WebShell : Form
         base.OnLayout(e);
 
         // 构造期间也会触发布局，此时子控件还没建好。
-        if (_header is null || _tabStrip is null || _webHost is null || _addressHost is null || _close is null)
+        if (!_ready || _header is null || _toolbar is null || _webHost is null)
         {
             return;
         }
@@ -573,191 +613,296 @@ internal sealed class WebShell : Form
         }
     }
 
+    /// <summary>DPI 缩放：96 逻辑像素 → 当前 DPI 的物理像素。</summary>
+    private int S(int value) => (int)MathF.Round(value * _scale);
 
     private void LayoutChildren(int width, int height)
     {
-        if (_header is null || _tabStrip is null || _webHost is null || _addressHost is null || _close is null)
+        if (_header is null || _toolbar is null || _webHost is null || _close is null)
         {
             return;
         }
 
-        _header.Bounds = new Rectangle(0, 0, width, HeaderHeight);
-        _tabStrip.Bounds = new Rectangle(0, HeaderHeight, width, TabStripHeight);
-        _webHost.Bounds = new Rectangle(
-            0,
-            HeaderHeight + TabStripHeight,
-            width,
-            Math.Max(0, height - HeaderHeight - TabStripHeight));
+        _scale = DeviceDpi / 96f;
+        var titleHeight = S(TitleBarHeight);
+        var toolHeight = S(ToolbarHeight);
+        var control = S(ControlSize);
+        var margin = S(12);
+        var rowY = S(8);
 
-        // 右侧：三颗红绿灯（关/最小化/最大化），命中区 32px 方便点。
-        const int dotSize = 32;
-        const int dotGap = 2;
-        var groupLeft = width - 8 - ((dotSize * 3) + (dotGap * 2));
-        // 保持原来的顺序：最小化 → 最大化 → 关闭（关闭仍在最右）。
-        _minimize.Bounds = new Rectangle(groupLeft, 6, dotSize, dotSize);
-        _maximize.Bounds = new Rectangle(groupLeft + dotSize + dotGap, 6, dotSize, dotSize);
-        _close.Bounds = new Rectangle(groupLeft + (2 * (dotSize + dotGap)), 6, dotSize, dotSize);
+        _header.Bounds = new Rectangle(0, 0, width, titleHeight);
+        _toolbar.Bounds = new Rectangle(0, titleHeight, width, toolHeight);
+        _webHost.Bounds = new Rectangle(0, titleHeight + toolHeight, width,
+            Math.Max(0, height - titleHeight - toolHeight));
 
-        // 工具按钮（刷新 / 浏览器）放在红绿灯左边
-        const int buttonWidth = 46;
-        var toolsRight = groupLeft - 8;
-        _external.Bounds = new Rectangle(toolsRight - buttonWidth, 8, buttonWidth - 2, HeaderHeight - 16);
-        _refresh.Bounds = new Rectangle(toolsRight - (2 * buttonWidth), 8, buttonWidth - 2, HeaderHeight - 16);
+        // 右侧：三颗红绿灯（最小化 → 最大化 → 关闭），命中区 32×32 紧挨着，整组右侧留 12px 内边距。
+        var closeX = width - margin - control;
+        var maxX = closeX - control;
+        var minX = maxX - control;
+        _close.Bounds = new Rectangle(closeX, rowY, control, control);
+        _maximize.Bounds = new Rectangle(maxX, rowY, control, control);
+        _minimize.Bounds = new Rectangle(minX, rowY, control, control);
 
-        const int titleWidth = 112;
-        var addressLeft = titleWidth;
-        var addressRight = toolsRight - (2 * buttonWidth) - 6;
-        _addressHost.Bounds = new Rectangle(
-            addressLeft,
-            9,
-            Math.Max(160, addressRight - addressLeft - 10),
-            HeaderHeight - 18);
+        // 工具按钮（刷新 / 在浏览器打开）放红绿灯左边。
+        var externalX = minX - S(12) - control;
+        var refreshX = externalX - S(4) - control;
+        _external.Bounds = new Rectangle(externalX, rowY, control, control);
+        _refresh.Bounds = new Rectangle(refreshX, rowY, control, control);
+
+        // 品牌（◈ + DSH-Orbit），1px 分隔线，标签紧接其后；+ 跟在标签末尾（放不下时钉在标签区最右）。
+        _brandTextX = S(12) + S(18) + S(8);
+        _brandWidth = Fluent.Measure(_measureGraphics, BrandText, Fluent.Font(TextRole.Body, true, _scale));
+        var brandEnd = _brandTextX + (int)MathF.Ceiling(_brandWidth) + S(4);
+        _brandDividerX = brandEnd + S(12);
+        _tabsStart = brandEnd + S(24);
+        _tabsRegionRight = refreshX - S(8);
+        _tabStripTop = rowY;
+        LayoutTabs();
+
+        // 工具条：地址栏左右各 12 内边距，TextField 32 高、上下各 2。
+        _addressChrome = new Rectangle(S(12), S(2), Math.Max(S(80), width - (2 * S(12))), S(32));
+        var preferred = _address.PreferredHeight;
+        _address.Bounds = new Rectangle(
+            _addressChrome.X + S(10),
+            _addressChrome.Y + Math.Max(0, (_addressChrome.Height - preferred) / 2),
+            Math.Max(S(40), _addressChrome.Width - (2 * S(10))),
+            preferred);
 
         ResizeWebViews();
+    }
 
+    /// <summary>按标签标题算出每个标签的矩形；+ 跟在最后一个标签后面，放不下时钉在标签区最右。</summary>
+    private void LayoutTabs()
+    {
+        _tabRects.Clear();
+        _closeRects.Clear();
+
+        var control = S(ControlSize);
+        var gap = S(4);
+        var font = Fluent.Font(TextRole.Caption, false, _scale);
+        var widths = new float[_tabs.Count];
+        var total = 0f;
+        for (var i = 0; i < _tabs.Count; i++)
+        {
+            var text = Fluent.Measure(_measureGraphics, _tabs[i].Title, font);
+            var preferred = text + S(44);
+            widths[i] = Math.Clamp(preferred, S(MinTabWidth), S(MaxTabWidth));
+            total += widths[i];
+        }
+
+        // 标签区可用宽度 = 一直到工具按钮左边；+ 号本身不算在内。
+        var available = Math.Max(0f, _tabsRegionRight - control - gap - _tabsStart);
+        var maxScroll = Math.Max(0f, total - available);
+        _tabScroll = (int)Math.Clamp((float)_tabScroll, 0f, maxScroll);
+
+        var tabsEnd = _tabsStart + total - _tabScroll;
+        var plusX = (int)MathF.Round(Math.Min(_tabsRegionRight - control, tabsEnd + gap));
+        plusX = Math.Max(_tabsStart, plusX);
+        _plusRect = new Rectangle(plusX, _tabStripTop, control, control);
+        _tabsClipRight = Math.Max(_tabsStart, plusX - gap);
+
+        var x = (float)(_tabsStart - _tabScroll);
+        var height = S(TabHeight);
+        var closeSize = S(14);
+        for (var i = 0; i < _tabs.Count; i++)
+        {
+            var rect = new RectangleF(x, _tabStripTop, widths[i], height);
+            _tabRects.Add(rect);
+            _closeRects.Add(new RectangleF(
+                rect.Right - S(10) - closeSize,
+                rect.Y + ((rect.Height - closeSize) / 2f),
+                closeSize,
+                closeSize));
+            x += widths[i];
+        }
     }
 
     private void ResizeWebViews()
     {
-        var width = Math.Max(0, _webHost.ClientSize.Width - (2 * ResizeGrip));
-        var height = Math.Max(0, _webHost.ClientSize.Height - (2 * ResizeGrip));
+        var width = Math.Max(0, _webHost.ClientSize.Width - (2 * S(ResizeGrip)));
+        var height = Math.Max(0, _webHost.ClientSize.Height - (2 * S(ResizeGrip)));
         foreach (var tab in _tabs)
         {
             if (tab.View is not null)
             {
-                tab.View.Bounds = new Rectangle(ResizeGrip, ResizeGrip, width, height);
+                tab.View.Bounds = new Rectangle(S(ResizeGrip), S(ResizeGrip), width, height);
             }
 
             if (tab.Start is not null)
             {
-                tab.Start.Bounds = new Rectangle(ResizeGrip, ResizeGrip, width, height);
+                tab.Start.Bounds = new Rectangle(S(ResizeGrip), S(ResizeGrip), width, height);
             }
         }
     }
+
+    private void RefreshTabStrip()
+    {
+        if (!_ready)
+        {
+            return;
+        }
+
+        LayoutTabs();
+        _header.Invalidate();
+    }
+
+    // ---------------------------------------------------------------- 标题栏绘制
 
     private void PaintHeader(object? sender, PaintEventArgs e)
     {
         var g = e.Graphics;
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+        Fluent.AntiAlias(g);
 
-        using (var pen = new Pen(Color.FromArgb(30, 255, 255, 255)))
-        {
-            g.DrawLine(pen, 0, _header.Height - 1, _header.Width, _header.Height - 1);
-        }
+        var width = _header.Width;
+        var height = _header.Height;
+        Fluent.Fill(g, new RectangleF(0, 0, width, height), Fluent.Flyout);
 
-        OrbitMark.Draw(g, new RectangleF(14, (_header.Height / 2f) - 9, 18, 18), Accent, 2.2f);
+        // 品牌：◈ DSH-Orbit（14 semibold）
+        var markSize = S(18);
+        var markBox = new RectangleF(S(12), (height - markSize) / 2f, markSize, markSize);
+        OrbitMark.Draw(g, markBox, Fluent.AccentFill, 2.2f * _scale);
+        Fluent.Text(
+            g,
+            BrandText,
+            Fluent.Font(TextRole.Body, true, _scale),
+            Fluent.TextPrimary,
+            new RectangleF(_brandTextX, 0, _brandWidth + S(2), height));
 
-        using var font = new Font(
-            Ui.PickFamily("HarmonyOS Sans SC Medium", Ui.PickFamily("HarmonyOS Sans", "Segoe UI")),
-            12.5f, FontStyle.Regular, GraphicsUnit.Pixel);
-        Ui.Text(g, "DSH Web", font, TextPrimary, new RectangleF(38, 0, 84, _header.Height));
-    }
+        // 品牌与标签之间的 1px 分组线（和设计稿里 "DSH-Orbit │[标签]" 一致）。
+        var dividerHeight = S(20);
+        Fluent.Divider(
+            g,
+            new RectangleF(_brandDividerX, (height - dividerHeight) / 2f, Math.Max(1, S(1)), dividerHeight));
 
-    private void PaintAddressHost(object? sender, PaintEventArgs e)
-    {
-        var g = e.Graphics;
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-        var rect = new Rectangle(0, 0, _addressHost.Width - 1, _addressHost.Height - 1);
-        using var path = Ui.Rounded(rect, 9);
-        using var border = new Pen(Color.FromArgb(36, 255, 255, 255));
-        g.DrawPath(border, path);
-    }
+        LayoutTabs();
 
-    private void PaintTabs(object? sender, PaintEventArgs e)
-    {
-        var g = e.Graphics;
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
-        _tabHits.Clear();
-
-        using (var pen = new Pen(Color.FromArgb(26, 255, 255, 255)))
-        {
-            g.DrawLine(pen, 0, _tabStrip.Height - 1, _tabStrip.Width, _tabStrip.Height - 1);
-        }
-
-        using var titleFont = new Font(
-            Ui.PickFamily("HarmonyOS Sans SC", Ui.PickFamily("HarmonyOS Sans", "Segoe UI")),
-            11.5f, FontStyle.Regular, GraphicsUnit.Pixel);
-
-        // 标签多到放不下时横向滚动（滚轮），每页宽度固定，+ 号钉在右侧。
-        var available = Math.Max(120, _tabStrip.Width - PlusWidth - 10);
-        var tabWidth = MaxTabWidth;
-        var total = _tabs.Count * tabWidth;
-        var maxScroll = Math.Max(0, total - available);
-        _tabScroll = Math.Clamp(_tabScroll, 0, maxScroll);
-
-        var clipWidth = Math.Max(0, _tabStrip.Width - PlusWidth - 6);
-        var clipState = g.Save();
-        g.SetClip(new Rectangle(0, 0, clipWidth, _tabStrip.Height));
-        var x = 6 - _tabScroll;
-
-        for (var i = 0; i < _tabs.Count; i++)
+        // 标签：激活 = Layer 底 + 底部 2px 强调色指示条；悬停 = 8% 状态层。
+        var clip = g.Save();
+        g.SetClip(new RectangleF(_tabsStart, 0, Math.Max(0, _tabsClipRight - _tabsStart), height));
+        var tabFont = Fluent.Font(TextRole.Caption, false, _scale);
+        for (var i = 0; i < _tabs.Count && i < _tabRects.Count; i++)
         {
             var tab = _tabs[i];
             var active = ReferenceEquals(tab, _active);
-            var rect = new Rectangle(x, 3, (int)tabWidth - 4, TabStripHeight - 7);
+            var rect = _tabRects[i];
 
-            using (var path = Ui.Rounded(rect, 8))
+            using (var shape = Fluent.RoundedTop(rect, Fluent.RCard * _scale))
             {
                 if (active)
                 {
-                    // 只靠底色 + 更亮的文字区分激活态，不加下划线。
-                    using var fill = new SolidBrush(Color.FromArgb(36, 43, 57));
-                    g.FillPath(fill, path);
+                    // Layer 和 Flyout 只差一阶，补一圈 1px 卡片描边（WinUI 选中标签也有）才立得住。
+                    Fluent.Fill(g, shape, Fluent.Layer);
+                    Fluent.Stroke(g, shape, Fluent.StrokeColor, Math.Max(1f, S(1)));
                 }
-                else if (_hoverTab == i)
+                else if (i == _hoverTab)
                 {
-                    using var fill = new SolidBrush(Color.FromArgb(26, 32, 44));
-                    g.FillPath(fill, path);
+                    Fluent.Fill(g, shape, Fluent.OverState(Fluent.Flyout, VisualState.Hover));
                 }
             }
 
-            var closeRect = new Rectangle(rect.Right - 22, rect.Y + ((rect.Height - 14) / 2), 14, 14);
-            var showClose = active || _hoverTab == i;
-
-            Ui.Text(g, tab.Title, titleFont, active ? TextPrimary : TextMuted,
-                new RectangleF(rect.X + 10, rect.Y, rect.Width - (showClose ? 34 : 18), rect.Height),
-                Ui.LeftEllipsis);
-
-            if (showClose)
+            if (active)
             {
-                Icons.Draw(g, "x", closeRect, active ? Color.FromArgb(190, 202, 220) : TextMuted, 2f);
-                _tabHits.Add((closeRect, i, true));
+                Fluent.Fill(
+                    g,
+                    new RectangleF(rect.X, rect.Bottom - S(2), rect.Width, S(2)),
+                    Fluent.AccentFill);
             }
 
-            _tabHits.Add((rect, i, false));
-            x += (int)tabWidth;
+            var showClose = active || i == _hoverTab;
+            var textRight = showClose ? rect.Right - S(34) : rect.Right - S(10);
+            Fluent.Text(
+                g,
+                tab.Title,
+                tabFont,
+                active ? Fluent.TextPrimary : Fluent.TextSecondary,
+                new RectangleF(rect.X + S(12), rect.Y, Math.Max(0, textRight - rect.X - S(12)), rect.Height),
+                StringAlignment.Near,
+                StringTrimming.EllipsisCharacter);
+
+            if (!showClose)
+            {
+                continue;
+            }
+
+            var closeRect = _closeRects[i];
+            if (i == _hoverClose)
+            {
+                var backplate = new RectangleF(
+                    closeRect.X - S(4),
+                    closeRect.Y - S(4),
+                    closeRect.Width + S(8),
+                    closeRect.Height + S(8));
+                using var hoverPath = Fluent.Rounded(backplate, Fluent.RControl);
+                Fluent.Fill(g, hoverPath, Fluent.HoverLayer);
+            }
+
+            Icons.Draw(
+                g,
+                "x",
+                closeRect,
+                i == _hoverClose ? Fluent.TextPrimary : Fluent.TextSecondary,
+                2f);
         }
 
-        g.Restore(clipState);
+        g.Restore(clip);
 
-        _plusRect = new Rectangle(_tabStrip.Width - PlusWidth + 2, 4, 26, TabStripHeight - 10);
-        if (_hoverTab == -2)
-        {
-            using var plusPath = Ui.Rounded(_plusRect, 8);
-            using var fill = new SolidBrush(Color.FromArgb(28, 34, 46));
-            g.FillPath(fill, plusPath);
-        }
+        // + 号：32×32 IconButton，跟在标签末尾（放不下时钉在标签区最右）。
+        Fluent.IconButton(
+            g,
+            _plusRect,
+            "plus",
+            _hoverTab == -2 ? VisualState.Hover : VisualState.Rest,
+            S(16),
+            _hoverTab == -2 ? Fluent.TextPrimary : Fluent.TextSecondary);
+    }
 
-        Icons.Draw(g, "plus", new RectangleF(_plusRect.X + 7, _plusRect.Y + 5, 12, 12), TextMuted, 2f);
+    // ---------------------------------------------------------------- 工具条绘制
+
+    private void PaintToolbar(object? sender, PaintEventArgs e)
+    {
+        var g = e.Graphics;
+        Fluent.AntiAlias(g);
+
+        var width = _toolbar.Width;
+        var height = _toolbar.Height;
+        Fluent.Fill(g, new RectangleF(0, 0, width, height), Fluent.Mica);
+        Fluent.HairLine(g, 0, height - 1, width);
+
+        Fluent.TextBox(
+            g,
+            new RectangleF(_addressChrome.X, _addressChrome.Y, _addressChrome.Width, _addressChrome.Height),
+            null,
+            null,
+            _address.Focused,
+            _addressHover,
+            _scale);
     }
 
     // ---------------------------------------------------------------- 标签交互
 
-    private void TabsMouseMove(object? sender, MouseEventArgs e)
+    private void HeaderMouseMove(object? sender, MouseEventArgs e)
     {
         var hit = TabHitTest(e.Location);
-        var index = hit.IsPlus ? -2 : hit.Index;
-        if (index != _hoverTab)
+        var hoverTab = hit.IsPlus ? -2 : hit.Index;
+        var hoverClose = hit.IsClose ? hit.Index : -1;
+        if (hoverTab == _hoverTab && hoverClose == _hoverClose)
         {
-            _hoverTab = index;
-            _tabStrip.Cursor = (hit.IsPlus || hit.Index >= 0) ? Cursors.Hand : Cursors.Default;
-            _tabStrip.Invalidate();
+            return;
         }
+
+        _hoverTab = hoverTab;
+        _hoverClose = hoverClose;
+        _header.Cursor = (hit.IsPlus || hit.Index >= 0) ? Cursors.Hand : Cursors.Default;
+        _header.Invalidate();
     }
 
-    private void TabsMouseUp(object? sender, MouseEventArgs e)
+    private void HeaderMouseLeave(object? sender, EventArgs e)
+    {
+        ResetTabHover();
+        _header.Invalidate();
+    }
+
+    private void HeaderMouseUp(object? sender, MouseEventArgs e)
     {
         if (e.Button != MouseButtons.Left)
         {
@@ -767,6 +912,7 @@ internal sealed class WebShell : Form
         var hit = TabHitTest(e.Location);
         if (hit.IsPlus)
         {
+            ResetTabHover();
             CreateStartTab();
             return;
         }
@@ -776,45 +922,238 @@ internal sealed class WebShell : Form
             return;
         }
 
+        var target = _tabs[hit.Index];
+        ResetTabHover();
         if (hit.IsClose)
         {
-            CloseTab(_tabs[hit.Index]);
+            CloseTab(target);
             return;
         }
 
-        Activate(_tabs[hit.Index]);
+        Activate(target);
+    }
+
+    private void OnShellMouseWheel(object? sender, MouseEventArgs e)
+    {
+        // 标题栏上滚轮横向滚动标签（和旧实现一致）。
+        if (PointToClient(Cursor.Position).Y >= S(TitleBarHeight))
+        {
+            return;
+        }
+
+        _tabScroll = Math.Max(0, _tabScroll - (e.Delta / 2));
+        RefreshTabStrip();
+    }
+
+    private void ResetTabHover()
+    {
+        _hoverTab = -1;
+        _hoverClose = -1;
+    }
+
+    /// <summary>标题栏里只有标签和 + 号要拦鼠标，其余空白留给窗体做 HTCAPTION 拖动。</summary>
+    private bool HeaderInteractive(Point point)
+    {
+        LayoutTabs();
+
+        if (_plusRect.Contains(point))
+        {
+            return true;
+        }
+
+        // 左右滚动出可视区的标签不算（否则品牌区会变成标签命中区）。
+        if (point.X < _tabsStart || point.X > _tabsClipRight ||
+            point.Y < _tabStripTop || point.Y > _tabStripTop + S(TabHeight))
+        {
+            return false;
+        }
+
+        foreach (var rect in _tabRects)
+        {
+            if (rect.Contains(point))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private (int Index, bool IsClose, bool IsPlus) TabHitTest(Point point)
     {
+        LayoutTabs();
+
         if (_plusRect.Contains(point))
         {
             return (-1, false, true);
         }
 
-        // 被 + 号区域裁掉的部分不参与命中。
-        if (point.X > _tabStrip.Width - PlusWidth - 6)
+        // 滚出可视区的标签不参与命中。
+        if (point.X < _tabsStart || point.X > _tabsClipRight || point.Y < _tabStripTop ||
+            point.Y > _tabStripTop + S(TabHeight))
         {
             return (-1, false, false);
         }
 
-        foreach (var (bounds, index, isClose) in _tabHits)
+        for (var i = 0; i < _tabRects.Count; i++)
         {
-            if (isClose && bounds.Contains(point))
+            var visible = ReferenceEquals(_tabs[i], _active) || i == _hoverTab;
+            if (!visible)
             {
-                return (index, true, false);
+                continue;
+            }
+
+            var close = RectangleF.Inflate(_closeRects[i], S(4), S(4));
+            if (close.Contains(point))
+            {
+                return (i, true, false);
             }
         }
 
-        foreach (var (bounds, index, isClose) in _tabHits)
+        for (var i = 0; i < _tabRects.Count; i++)
         {
-            if (!isClose && bounds.Contains(point))
+            if (_tabRects[i].Contains(point))
             {
-                return (index, false, false);
+                return (i, false, false);
             }
         }
 
         return (-1, false, false);
+    }
+
+    // ---------------------------------------------------------------- 主题 / DWM
+
+    private void OnFluentChanged()
+    {
+        if (IsDisposed || Disposing || !_ready)
+        {
+            return;
+        }
+
+        if (IsHandleCreated && InvokeRequired)
+        {
+            try
+            {
+                BeginInvoke(new Action(OnFluentChanged));
+            }
+            catch (InvalidOperationException)
+            {
+                // 窗口正在销毁，忽略。
+            }
+
+            return;
+        }
+
+        ApplyFluentChrome();
+    }
+
+    private Color AddressFill => _addressHover ? Fluent.ControlFillHover : Fluent.ControlFill;
+
+    /// <summary>把 Fluent 令牌应用到窗口与所有子控件，然后整窗重画。</summary>
+    private void ApplyFluentChrome()
+    {
+        _scale = DeviceDpi / 96f;
+
+        BackColor = Fluent.Mica;
+        _header.BackColor = Fluent.Flyout;
+        _toolbar.BackColor = Fluent.Mica;
+        _webHost.BackColor = Fluent.Mica;
+
+        _address.BackColor = AddressFill;
+        _address.ForeColor = Fluent.TextPrimary;
+        _address.Font = Fluent.Font(TextRole.Body, false, _scale);
+
+        _refresh.SyncTheme();
+        _external.SyncTheme();
+        _minimize.SyncTheme();
+        _maximize.SyncTheme();
+        _close.SyncTheme();
+
+        foreach (var tab in _tabs)
+        {
+            if (tab.View is null)
+            {
+                continue;
+            }
+
+            try
+            {
+                // 页面底色跟主题走：深色 #202020 / 浅色 #F3F3F3（= Fluent.Mica）。
+                tab.View.DefaultBackgroundColor = Fluent.Mica;
+            }
+            catch (Exception ex)
+            {
+                AppPaths.Log($"更新 WebView2 背景失败：{ex.Message}");
+            }
+
+            if (tab.Core is { } core)
+            {
+                ApplyWebViewTheme(core);
+            }
+        }
+
+        ApplyWindowAttributes();
+
+        if (IsHandleCreated)
+        {
+            ApplyBounds();
+        }
+
+        Invalidate(true);
+    }
+
+    /// <summary>让 WebView2 的 prefers-color-scheme 跟外壳主题一致（about:blank 的底色也靠它）。</summary>
+    private static void ApplyWebViewTheme(CoreWebView2 core)
+    {
+        try
+        {
+            core.Profile.PreferredColorScheme = Fluent.IsDark
+                ? CoreWebView2PreferredColorScheme.Dark
+                : CoreWebView2PreferredColorScheme.Light;
+        }
+        catch (Exception ex)
+        {
+            AppPaths.Log($"设置 WebView2 主题失败：{ex.Message}");
+        }
+    }
+
+    /// <summary>DWMWA_USE_IMMERSIVE_DARK_MODE 跟随 Fluent.IsDark（主题变化时重设）；圆角保留。</summary>
+    private void ApplyWindowAttributes()
+    {
+        if (!IsHandleCreated)
+        {
+            return;
+        }
+
+        try
+        {
+            var dark = Fluent.IsDark ? 1 : 0;
+            _ = DwmSetWindowAttribute(Handle, DarkTitleBar, ref dark, sizeof(int));
+            var round = 2;
+            _ = DwmSetWindowAttribute(Handle, CornerPreference, ref round, sizeof(int));
+        }
+        catch
+        {
+            // Windows 10 早期的 dwmapi 没有这些属性，忽略。
+        }
+    }
+
+    private void UpdateAddressHover()
+    {
+        var point = _toolbar.PointToClient(Cursor.Position);
+        SetAddressHover(_addressChrome.Contains(point));
+    }
+
+    private void SetAddressHover(bool hover)
+    {
+        if (_addressHover == hover)
+        {
+            return;
+        }
+
+        _addressHover = hover;
+        _address.BackColor = AddressFill;
+        _toolbar.Invalidate();
     }
 
     // ---------------------------------------------------------------- 拖动 / 缩放 / 最大化
@@ -971,10 +1310,6 @@ internal sealed class WebShell : Form
 
     private const int WmNcCalcSize = 0x0083;
     private const int WmNcHitTest = 0x0084;
-    private const int WmSysCommand = 0x0112;
-    private const int ScMinimize = 0xF020;
-    private const int ScMaximize = 0xF030;
-    private const int ScRestore = 0xF120;
     private const int HtClient = 1;
     private const int HtCaption = 2;
     private const int HtLeft = 10;
@@ -988,9 +1323,6 @@ internal sealed class WebShell : Form
     private const int FramePad = 8;
     private const int WmGetMinMaxInfo = 0x0024;
     private const int WmSize = 0x0005;
-    private const int SmCxSizeFrame = 32;
-    private const int SmCySizeFrame = 33;
-    private const int SmCxPaddedBorder = 92;
 
     private const int SwMaximize = 3;
     private const int SwMinimize = 6;
@@ -1080,7 +1412,7 @@ internal sealed class WebShell : Form
     {
         if (WindowState == FormWindowState.Normal)
         {
-            const int border = 6;
+            var border = S(6);
             var left = point.X <= border;
             var right = point.X >= ClientSize.Width - border;
             var top = point.Y <= border;
@@ -1096,7 +1428,7 @@ internal sealed class WebShell : Form
             if (bottom) return HtBottom;
         }
 
-        return point.Y < HeaderHeight ? HtCaption : HtClient;
+        return point.Y < S(TitleBarHeight) ? HtCaption : HtClient;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -1119,9 +1451,6 @@ internal sealed class WebShell : Form
     }
 
     [DllImport("user32.dll")]
-    private static extern int GetSystemMetrics(int index);
-
-    [DllImport("user32.dll")]
     private static extern bool IsZoomed(IntPtr hwnd);
 
     [DllImport("user32.dll")]
@@ -1130,23 +1459,19 @@ internal sealed class WebShell : Form
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr hwnd, int command);
 
-    [DllImport("user32.dll")]
-    private static extern IntPtr SendMessage(IntPtr hwnd, int message, int wParam, IntPtr lParam);
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
-        try
-        {
-            var dark = 1;
-            _ = DwmSetWindowAttribute(Handle, DarkTitleBar, ref dark, sizeof(int));
-            var round = 2;
-            _ = DwmSetWindowAttribute(Handle, CornerPreference, ref round, sizeof(int));
-        }
-        catch
-        {
-            // Windows 10 没有这些属性，忽略。
-        }
+        ApplyFluentChrome();
+    }
+
+    protected override void OnDpiChanged(DpiChangedEventArgs e)
+    {
+        base.OnDpiChanged(e);
+        ApplyFluentChrome();
     }
 
     protected override void OnResize(EventArgs e)
@@ -1159,21 +1484,20 @@ internal sealed class WebShell : Form
     {
         if (disposing)
         {
+            Fluent.Changed -= OnFluentChanged;
             _refresh?.Dispose();
             _external?.Dispose();
             _minimize?.Dispose();
             _maximize?.Dispose();
             _close?.Dispose();
-            _addressHost?.Dispose();
+            _toolbar?.Dispose();
             _header?.Dispose();
-            _tabStrip?.Dispose();
+            _measureGraphics?.Dispose();
+            _measureSurface?.Dispose();
         }
 
         base.Dispose(disposing);
     }
-
-    [DllImport("dwmapi.dll")]
-    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 
     /// <summary>一个标签页 = 一个 WebView2（都在 _webHost 里，只显示当前那个）。</summary>
     private sealed class Tab
@@ -1203,7 +1527,7 @@ internal sealed class WebShell : Form
     {
         protected override void WndProc(ref Message m)
         {
-            if (m.Msg == 0x0084 && Parent is { } parent)
+            if (m.Msg == WmNcHitTest && Parent is { } parent)
             {
                 var raw = m.LParam.ToInt64();
                 var screen = new Point((short)(raw & 0xFFFF), (short)((raw >> 16) & 0xFFFF));
@@ -1221,22 +1545,33 @@ internal sealed class WebShell : Form
         }
     }
 
-    /// <summary>标题栏面板：自身不接收鼠标命中，交给父窗口做 HTCAPTION。按钮/地址栏是它的子窗口，不受影响。</summary>
-    private sealed class HitThroughPanel : BufferedPanel
+    /// <summary>
+    /// 标题栏面板：只有标签 / + 号拦鼠标（HTCLIENT），其余空白一律 HTTRANSPARENT，
+    /// 交给窗体返回 HTCAPTION —— 这样蓝色区域仍可拖动、双击最大化。
+    /// </summary>
+    private sealed class TitleBarPanel : BufferedPanel
     {
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public Func<Point, bool>? Interactive { get; set; }
+
         protected override void WndProc(ref Message m)
         {
-            if (m.Msg == 0x0084)
+            if (m.Msg == WmNcHitTest && Interactive is { } interactive)
             {
-                m.Result = (IntPtr)(-1); // HTTRANSPARENT
-                return;
+                var raw = m.LParam.ToInt64();
+                var screen = new Point((short)(raw & 0xFFFF), (short)((raw >> 16) & 0xFFFF));
+                if (!interactive(PointToClient(screen)))
+                {
+                    m.Result = (IntPtr)(-1); // HTTRANSPARENT
+                    return;
+                }
             }
 
             base.WndProc(ref m);
         }
     }
 
-    /// <summary>macOS 风格的红绿灯按钮：彩色圆点 + 悬停符号，命中区比圆点大。</summary>
+    /// <summary>macOS 风格的红绿灯按钮：15px 彩色圆点，命中区 32×32，悬停 8% 状态层。</summary>
     private sealed class TrafficButton : Control
     {
         public enum Dot
@@ -1261,20 +1596,27 @@ internal sealed class WebShell : Form
             SetStyle(
                 ControlStyles.AllPaintingInWmPaint |
                 ControlStyles.OptimizedDoubleBuffer |
-                ControlStyles.UserPaint |
-                ControlStyles.SupportsTransparentBackColor,
+                ControlStyles.UserPaint,
                 true);
-            BackColor = Color.Transparent;
+            BackColor = Fluent.Flyout;
 
             _toolTip = new ToolTip();
             _toolTip.SetToolTip(this, tooltip);
         }
 
-        private Color BaseColor => _dot switch
+        /// <summary>主题变了：底板颜色跟着标题栏走，然后重画。</summary>
+        public void SyncTheme()
         {
-            Dot.Close => Color.FromArgb(255, 95, 87),
-            Dot.Minimize => Color.FromArgb(254, 188, 46),
-            _ => Color.FromArgb(40, 200, 64),
+            BackColor = Fluent.Flyout;
+            Invalidate();
+        }
+
+        /// <summary>颜色语义与顺序保持 macOS：最小化 Caution、最大化 Success、关闭 Critical。</summary>
+        private Color DotColor => _dot switch
+        {
+            Dot.Close => Fluent.Critical,
+            Dot.Minimize => Fluent.Caution,
+            _ => Fluent.Success,
         };
 
         protected override void OnMouseEnter(EventArgs e)
@@ -1303,46 +1645,22 @@ internal sealed class WebShell : Form
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics;
-            g.SmoothingMode = SmoothingMode.AntiAlias;
+            Fluent.AntiAlias(g);
 
-            const float diameter = 15f;
-            var cx = Width / 2f;
-            var cy = Height / 2f;
-            var circle = new RectangleF(cx - (diameter / 2f), cy - (diameter / 2f), diameter, diameter);
-
-            using (var fill = new SolidBrush(_hover ? ControlPaint.Light(BaseColor, 0.12f) : BaseColor))
+            if (_hover)
             {
-                g.FillEllipse(fill, circle);
+                using var backplate = Fluent.Rounded(new RectangleF(0, 0, Width, Height), Fluent.RCard);
+                Fluent.Fill(g, backplate, Fluent.HoverLayer);
             }
 
-            if (!_hover)
-            {
-                return;
-            }
-
-            var ink = _dot switch
-            {
-                Dot.Close => Color.FromArgb(120, 22, 18),
-                Dot.Minimize => Color.FromArgb(96, 62, 0),
-                _ => Color.FromArgb(10, 74, 22),
-            };
-
-            using var pen = new Pen(ink, 1.6f) { StartCap = LineCap.Round, EndCap = LineCap.Round };
-
-            switch (_dot)
-            {
-                case Dot.Close:
-                    g.DrawLine(pen, cx - 3.5f, cy - 3.5f, cx + 3.5f, cy + 3.5f);
-                    g.DrawLine(pen, cx + 3.5f, cy - 3.5f, cx - 3.5f, cy + 3.5f);
-                    break;
-                case Dot.Minimize:
-                    g.DrawLine(pen, cx - 4f, cy, cx + 4f, cy);
-                    break;
-                default:
-                    g.DrawLine(pen, cx - 4f, cy, cx + 4f, cy);
-                    g.DrawLine(pen, cx, cy - 4f, cx, cy + 4f);
-                    break;
-            }
+            var diameter = 15f * (DeviceDpi / 96f);
+            using var brush = new SolidBrush(DotColor);
+            g.FillEllipse(
+                brush,
+                (Width / 2f) - (diameter / 2f),
+                (Height / 2f) - (diameter / 2f),
+                diameter,
+                diameter);
         }
 
         protected override void Dispose(bool disposing)
@@ -1356,7 +1674,7 @@ internal sealed class WebShell : Form
         }
     }
 
-    /// <summary>标题栏上的图标按钮（Lucide 图标，自绘 hover）。</summary>
+    /// <summary>标题栏上的 32×32 图标按钮（Lucide 图标，悬停 8% 状态层）。</summary>
     private sealed class HeaderButton : Control
     {
         private readonly Action _action;
@@ -1366,25 +1684,28 @@ internal sealed class WebShell : Form
         public HeaderButton(string tooltip, Action action)
         {
             _action = action;
-            Size = new Size(44, 28);
+            Size = new Size(32, 32);
             TabStop = false;
             Cursor = Cursors.Hand;
             SetStyle(
                 ControlStyles.AllPaintingInWmPaint |
                 ControlStyles.OptimizedDoubleBuffer |
-                ControlStyles.UserPaint |
-                ControlStyles.SupportsTransparentBackColor,
+                ControlStyles.UserPaint,
                 true);
-            BackColor = Color.Transparent;
+            BackColor = Fluent.Flyout;
             _toolTip = new ToolTip();
             _toolTip.SetToolTip(this, tooltip);
         }
 
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        public string Glyph { get; set; } = "min";
+        public string Glyph { get; set; } = "refresh";
 
-        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        public bool Danger { get; init; }
+        /// <summary>主题变了：底板颜色跟着标题栏走，然后重画。</summary>
+        public void SyncTheme()
+        {
+            BackColor = Fluent.Flyout;
+            Invalidate();
+        }
 
         protected override void OnMouseEnter(EventArgs e)
         {
@@ -1412,29 +1733,15 @@ internal sealed class WebShell : Form
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics;
-            g.SmoothingMode = SmoothingMode.AntiAlias;
+            Fluent.AntiAlias(g);
 
-            if (_hover)
-            {
-                using var path = Ui.Rounded(new Rectangle(0, 0, Width, Height), 7);
-                using var fill = new SolidBrush(
-                    Danger ? Color.FromArgb(46, 240, 90, 90) : Color.FromArgb(26, 255, 255, 255));
-                g.FillPath(fill, path);
-            }
-
-            var color = Danger && _hover ? Color.FromArgb(255, 150, 150) : Color.FromArgb(168, 180, 198);
-            var iconName = Glyph switch
-            {
-                "refresh" => "refresh",
-                "external" => "external",
-                "min" => "minus",
-                "max" => "square",
-                "restore" => "copy",
-                "close" => "x",
-                _ => "square",
-            };
-
-            Icons.Draw(g, iconName, new RectangleF((Width / 2f) - 8, (Height / 2f) - 8, 16, 16), color, 2f);
+            Fluent.IconButton(
+                g,
+                new RectangleF(0, 0, Width, Height),
+                Glyph,
+                _hover ? VisualState.Hover : VisualState.Rest,
+                16f * (DeviceDpi / 96f),
+                _hover ? Fluent.TextPrimary : Fluent.TextSecondary);
         }
 
         protected override void Dispose(bool disposing)

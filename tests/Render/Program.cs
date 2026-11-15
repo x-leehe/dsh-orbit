@@ -72,7 +72,7 @@ internal static class Program
 
             if (only == "shell" || (only is null && shellUrl is not null))
             {
-                RenderShell(outputDir, suffix, shellUrl ?? "about:blank");
+                RenderShell(outputDir, suffix, shellUrl ?? "about:blank", startTab: args.Contains("--shell-start"));
             }
         }
 
@@ -228,18 +228,30 @@ internal static class Program
 
     // ---------------------------------------------------------------- 外壳
 
-    private static void RenderShell(string outputDir, string suffix, string url)
+    private static void RenderShell(string outputDir, string suffix, string url, bool startTab = false)
     {
         var shell = new WebShell(url, ShellCloseMode.Hide);
         shell.Show();
         shell.TopMost = true;
         shell.Activate();
-        Pump(900);
+        // WebView2 加载真实页面要一点时间，太短会截到 loading 态。
+        Pump(startTab ? 900 : 2800);
+
+        if (startTab)
+        {
+            // 新标签页没有公开入口，渲染器里反射调用一下（等价 Ctrl+T）。
+            var create = typeof(WebShell).GetMethod(
+                "CreateStartTab",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            create?.Invoke(shell, null);
+            Pump(700);
+        }
 
         using var bitmap = Capture(shell);
 
-        bitmap.Save(Path.Combine(outputDir, $"shell-{suffix}.png"), ImageFormat.Png);
-        Console.WriteLine($"saved shell-{suffix}.png");
+        var name = startTab ? $"shell-start-{suffix}.png" : $"shell-{suffix}.png";
+        bitmap.Save(Path.Combine(outputDir, name), ImageFormat.Png);
+        Console.WriteLine($"saved {name}");
         shell.ForceClose();
     }
 
