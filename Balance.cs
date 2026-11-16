@@ -32,12 +32,54 @@ internal sealed class BalanceService : IDisposable
     public string? KeySource => _keySource;
     public bool HasKey => !string.IsNullOrWhiteSpace(_key);
 
-    /// <summary>北京时间 00:30–08:30 为 DeepSeek 的优惠时段。</summary>
+    /// <summary>闲时窗口起点：北京时间 00:30（当日第 30 分钟，闭区间起点）。</summary>
+    public const int OffPeakStartMinute = 30;
+
+    /// <summary>闲时窗口终点：北京时间 08:30（当日第 510 分钟，开区间终点）。</summary>
+    public const int OffPeakEndMinute = 8 * 60 + 30;
+
+    /// <summary>北京时间 00:30–08:30 为 DeepSeek 的优惠时段（左闭右开）。</summary>
     public static bool IsOffPeak(DateTime utcNow)
     {
         var local = TimeZoneInfo.ConvertTimeFromUtc(utcNow, Beijing);
         var minutes = local.Hour * 60 + local.Minute;
-        return minutes is >= 30 and < (8 * 60 + 30);
+        return minutes >= OffPeakStartMinute && minutes < OffPeakEndMinute;
+    }
+
+    /// <summary>
+    /// 距离下一次计价时段切换的时长（按北京时间算）：
+    /// 闲时中 → 到当日 08:30；标准价且已过 00:30 → 到次日 00:30；标准价且未到 00:30 → 到当日 00:30。
+    /// 与 <see cref="IsOffPeak"/> 同一套边界：返回值恒为非负且小于 24 小时
+    /// （闲时最长 8h、标准价最长 16h，两段不对称）。
+    /// </summary>
+    public static TimeSpan UntilNextSwitch(DateTime utcNow)
+    {
+        var local = TimeZoneInfo.ConvertTimeFromUtc(utcNow, Beijing);
+        var midnight = new DateTime(local.Year, local.Month, local.Day, 0, 0, 0, DateTimeKind.Unspecified);
+        var startToday = midnight.AddMinutes(OffPeakStartMinute);
+        var endToday = midnight.AddMinutes(OffPeakEndMinute);
+
+        DateTime target;
+        if (local < startToday)
+        {
+            // 北京 00:00–00:30：标准价，等到今日 00:30 进入闲时。
+            target = startToday;
+        }
+        else if (local < endToday)
+        {
+            // 北京 00:30–08:30：闲时中，等到今日 08:30 回到标准价。
+            target = endToday;
+        }
+        else
+        {
+            // 北京 08:30–24:00：标准价，等到次日 00:30。
+            target = startToday.AddDays(1);
+        }
+
+        var span = target - local;
+        // 目标时刻按构造必然晚于当前时刻（最多 16h），这里只做防御性归一化，
+        // 保证调用方永远不会拿到负数。
+        return span < TimeSpan.Zero ? TimeSpan.Zero : span;
     }
 
     public async Task RefreshAsync(WidgetConfig config, CancellationToken ct)

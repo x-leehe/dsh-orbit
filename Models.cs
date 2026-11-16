@@ -31,6 +31,19 @@ internal sealed class StatusSnapshot
     public decimal? Balance { get; init; }
     public decimal? SpentToday { get; init; }
     public bool OffPeak { get; init; }
+
+    /// <summary>
+    /// 距离下一次计价时段切换的时长：闲时中 = 闲时剩余，标准价 = 距闲时开始。
+    /// 由本地时钟推导（北京 00:30–08:30 闲时），拿不到时为 null。
+    /// </summary>
+    public TimeSpan? UntilPriceSwitch { get; init; }
+
+    /// <summary>
+    /// 有 turn 在飞的会话数（近似值，来自 session_projcache 投影缓存）；
+    /// 无法判定时为 null，UI 显示「—」。
+    /// </summary>
+    public int? ActiveSessions { get; init; }
+
     public string? Hint { get; init; }
 
     /// <summary>状态色：直接取 Fluent 令牌，跟随浅/深主题。</summary>

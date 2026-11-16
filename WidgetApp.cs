@@ -46,10 +46,30 @@ internal sealed class WidgetApp : ApplicationContext
     private (DateTime At, TimeSpan Cpu)? _cpuSample;
     private bool _exitConfirmed;
 
+    /// <summary>会话数节流间隔：扫 40+ 个小 JSON 要几十毫秒，不能每个心跳都做。</summary>
+    private static readonly TimeSpan SessionProbeInterval = TimeSpan.FromSeconds(15);
+
+    /// <summary>最近一次会话数快照；null = 无法判定（UI 显示「—」），不要回退成 0。</summary>
+    private int? _activeSessions;
+
+    /// <summary>上次扫盘时刻；<see cref="DateTime.MinValue"/> 表示还没预热过，Tick 里不扫。</summary>
+    private DateTime _lastSessionProbe = DateTime.MinValue;
+
     public WidgetApp(WidgetConfig config)
     {
         _config = config;
         AppPaths.Ensure();
+
+        // 老配置里「点击穿透」和「贴边隐藏」可能同时为真，但两者语义互斥：
+        // 穿透 = 完整卡片常驻、不贴边；贴边 = 拉手/图标/浮层接力（收不到 hover 就没法用）。
+        // 穿透优先，读盘后立刻归一化并落盘一次。
+        if (_config.ClickThrough && (_config.EdgeHideEnabled || _config.DockSide != DockSide.None))
+        {
+            AppPaths.Log("配置归一化：点击穿透与贴边隐藏互斥，已关闭贴边隐藏");
+            _config.EdgeHideEnabled = false;
+            _config.DockSide = DockSide.None;
+            JsonIo.Save(AppPaths.ConfigFile, _config);
+        }
 
         // 令牌层必须在任何窗口创建前就绪（配色、字体都从它取）。
         Fluent.Init(config.Theme);
@@ -57,7 +77,7 @@ internal sealed class WidgetApp : ApplicationContext
         _form = new WidgetForm(config);
         _form.StartStopRequested += () => _ = ToggleDshAsync();
         _form.OpenRequested += OpenWebUi;
-        _form.LockRequested += ToggleLock;
+        _form.LockRequested += ToggleLock;   // 窗口侧由「右键图标」触发，别删这条订阅
         _form.Moved += SavePosition;
         _form.DockStateChanged += SaveDock;
         _form.StatusChanged += OnStatusChanged;
@@ -150,6 +170,8 @@ internal sealed class WidgetApp : ApplicationContext
         _warmupTimer.Tick += (_, _) =>
         {
             _warmupTimer.Stop();
+            // 会话数在这里取第一次（force 跳过节流），之后交给 1 秒心跳按 15s 节流刷新。
+            RefreshActiveSessions(force: true);
             _ = RefreshVersionAsync();
             _ = RefreshPluginsAsync();
             if (_config.ShowBalance)
@@ -195,9 +217,31 @@ internal sealed class WidgetApp : ApplicationContext
         // 系统主题/强调色变了就跟着变（每个心跳读一次注册表，开销可忽略）。
         Fluent.Refresh();
 
+        RefreshActiveSessions();
         UpdateMetrics();
         _form.SetStatus(BuildSnapshot());
         UpdateTray();
+    }
+
+    /// <summary>
+    /// 刷新会话数（15 秒节流）。冷启动不扫盘——第一次取值由预热定时器（1200ms）强制触发，
+    /// 保证「窗口先出来」；取到 null 就保持 null，让 UI 显示「—」。
+    /// </summary>
+    private void RefreshActiveSessions(bool force = false)
+    {
+        if (!force && _lastSessionProbe == DateTime.MinValue)
+        {
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        if (!force && now - _lastSessionProbe < SessionProbeInterval)
+        {
+            return;
+        }
+
+        _lastSessionProbe = now;
+        _activeSessions = SessionProbe.CountActiveSessions();
     }
 
     private async Task RefreshProbeAsync()
@@ -445,6 +489,10 @@ internal sealed class WidgetApp : ApplicationContext
             Balance = _balance.Balance,
             SpentToday = _balance.SpentToday,
             OffPeak = BalanceService.IsOffPeak(DateTime.UtcNow),
+            // 距下一次计价时段切换：闲时中 = 闲时剩余，标准价 = 距闲时开始。
+            UntilPriceSwitch = BalanceService.UntilNextSwitch(DateTime.UtcNow),
+            // 近似会话数（15s 节流缓存）；取不到时是 null，UI 显示「—」。
+            ActiveSessions = _activeSessions,
             Hint = _hint,
         };
     }
@@ -756,6 +804,21 @@ internal sealed class WidgetApp : ApplicationContext
     {
         var locked = !_config.ClickThrough;
         _config.ClickThrough = locked;
+
+        // 贴边隐藏 ⇄ 点击穿透互斥（用户定死）：穿透 = 完整卡片常驻，不贴边、不收成图标/拉手。
+        // 所以「开穿透」这一半要顺手把贴边隐藏关掉；反方向由 ToggleEdgeHide 负责。
+        if (locked)
+        {
+            _config.EdgeHideEnabled = false;
+            if (_form.DockSide != DockSide.None)
+            {
+                // Undock 会触发 DockStateChanged → SaveDock；最终仍以下面这一次 Save 为准。
+                _form.Undock();
+            }
+
+            _config.DockSide = DockSide.None;
+        }
+
         _form.ApplyClickThrough(locked);
         JsonIo.Save(AppPaths.ConfigFile, _config);
         _form.Invalidate();
@@ -764,22 +827,53 @@ internal sealed class WidgetApp : ApplicationContext
         if (locked)
         {
             _tray.ShowBalloonTip(2500, "挂件已锁定",
-                "点击会穿透到下层窗口，光标附近会开一个「探照灯」。右键托盘图标可解锁。", ToolTipIcon.Info);
+                "点击会穿透到下层窗口，挂件保持完整卡片，光标附近开一个探照灯；右键托盘图标可解锁。",
+                ToolTipIcon.Info);
         }
     }
 
+    /// <summary>
+    /// 贴边隐藏开关。两个方向都要处理互斥：
+    /// 开 → 先解除点击穿透（否则 DockTo 会被窗口侧的守卫拒绝），再贴到最近的左右边；
+    /// 关 → 解除贴边并记住当前位置。
+    /// </summary>
     private void ToggleEdgeHide()
     {
-        _config.EdgeHideEnabled = !_config.EdgeHideEnabled;
-        if (!_config.EdgeHideEnabled)
+        if (_config.EdgeHideEnabled)
         {
+            _config.EdgeHideEnabled = false;
             _form.Undock();
             _config.DockSide = DockSide.None;
             _config.X = _form.Left;
             _config.Y = _form.Top;
+            JsonIo.Save(AppPaths.ConfigFile, _config);
+            return;
         }
 
-        JsonIo.Save(AppPaths.ConfigFile, _config);
+        _config.EdgeHideEnabled = true;
+
+        // 互斥：先关穿透（ApplyClickThrough(false) 不动形态，完整卡片保持），
+        // 不先关的话下面的 DockTo 会直接 return。
+        if (_config.ClickThrough)
+        {
+            _config.ClickThrough = false;
+            _form.ApplyClickThrough(false);
+        }
+
+        var area = Screen.FromControl(_form).WorkingArea;
+        var center = _form.Left + (_form.Width / 2);
+        var side = center > area.Left + (area.Width / 2) ? DockSide.Right : DockSide.Left;
+
+        // DockTo 会触发 DockStateChanged → SaveDock，这一次写盘就带上了上面所有改动
+        // （ClickThrough=false / EdgeHideEnabled=true / DockSide），不用再 Save 一遍。
+        _form.DockTo(side, hidden: false);
+
+        // 兜底：万一 DockTo 没生效（理论上不会），至少把开关本身落盘。
+        if (_config.DockSide != side)
+        {
+            _config.DockSide = side;
+            JsonIo.Save(AppPaths.ConfigFile, _config);
+        }
     }
 
     private void ShowWidget()

@@ -18,7 +18,7 @@ public static class DshMeasure {
       uint pid; GetWindowThreadProcessId(h, out pid);
       if (pid == target) {
         var t = new StringBuilder(256); GetWindowTextW(h, t, 256);
-        if (t.ToString() == "DSH 状态挂件") {
+        if (t.ToString() == "DSH-Orbit") {
           RECT w, c; GetWindowRect(h, out w); GetClientRect(h, out c);
           result = "window=" + w.L + "," + w.T + " " + (w.R-w.L) + "x" + (w.B-w.T) +
                    "  client=" + c.R + "x" + c.B + "  visible=" + IsWindowVisible(h);

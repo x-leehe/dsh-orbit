@@ -213,37 +213,46 @@ internal static class Program
         form.Show();
         Application.DoEvents();
 
+        // 按真实用法贴到右屏：图标贴住屏幕右缘（贴屏侧两角是方角），浮层向左长。
+        form.DockTo(DockSide.Right, hidden: false);
+
         var running = new StatusSnapshot
         {
             State = DshState.Running,
             Profile = "web",
-            Version = "0.2.1-rc.5",
+            Version = "0.25.4",
             Port = 3080,
             DisplayUrl = "http://127.0.0.1:3080/",
             Uptime = new TimeSpan(0, 2, 6, 22),
             MemoryBytes = 268L * 1024 * 1024,
             CpuPercent = 3,
-            PluginTotal = 1,
-            PluginDisabled = 0,
+            PluginTotal = 12,
+            PluginDisabled = 2,
             PluginNames = "dsh-qqbot",
             Balance = 24.45m,
             SpentToday = 0.6400m,
             OffPeak = false,
+            UntilPriceSwitch = TimeSpan.FromMinutes(192),
+            ActiveSessions = 3,
         };
 
+        // 已停止：闲时中（倒计时走 Success 分支），会话数拿不到（显示「—」）。
         var stopped = new StatusSnapshot
         {
             State = DshState.Stopped,
             Profile = "web",
-            Version = "0.2.1-rc.5",
-            PluginTotal = 1,
-            PluginDisabled = 0,
+            Version = "0.25.4",
+            PluginTotal = 12,
+            PluginDisabled = 2,
             PluginNames = "dsh-qqbot",
             Balance = 24.45m,
             SpentToday = 0.6400m,
             OffPeak = true,
+            UntilPriceSwitch = TimeSpan.FromMinutes(102),
+            ActiveSessions = null,
         };
 
+        // 什么都没有：端口、会话、峰谷全部走降级分支，并带一行 hint。
         var missing = new StatusSnapshot
         {
             State = DshState.Stopped,
@@ -252,11 +261,37 @@ internal static class Program
             Hint = "未找到 dsh：请先安装 dsh，或手动运行 dsh web",
             Balance = 24.45m,
             SpentToday = 0.6400m,
+            UntilPriceSwitch = null,
+            ActiveSessions = null,
         };
 
-        Save(form, running, Path.Combine(outputDir, $"preview-running-{suffix}.png"));
-        Save(form, stopped, Path.Combine(outputDir, $"preview-stopped-{suffix}.png"));
-        Save(form, missing, Path.Combine(outputDir, $"preview-missing-{suffix}.png"));
+        // 每个状态两种形态：浮层态（预览总览）与贴边图标态。
+        foreach (var (name, snapshot) in new[]
+                 {
+                     ("running", running),
+                     ("stopped", stopped),
+                     ("missing", missing),
+                 })
+        {
+            form.SetStatus(snapshot);
+            Save(form, WidgetPose.Flyout, Path.Combine(outputDir, $"preview-{name}-{suffix}.png"));
+            Save(form, WidgetPose.Icon, Path.Combine(outputDir, $"preview-icon-{name}-{suffix}.png"));
+        }
+
+        // 穿透态：完整卡片、底部两枚按钮换成一行说明（鼠标直接落到桌面）。
+        form.SetStatus(running);
+        form.ApplyClickThrough(true);
+        Save(form, WidgetPose.Flyout, Path.Combine(outputDir, $"preview-clickthrough-{suffix}.png"));
+        form.ApplyClickThrough(false);
+
+        // 收起态：卡片滑出屏幕、只留屏边那根 6×28 拉手（要真收起，拉手才会落在窗口可见条里）。
+        form.DockTo(DockSide.Right, hidden: true);
+        foreach (var (name, snapshot) in new[] { ("running", running), ("stopped", stopped) })
+        {
+            form.SetStatus(snapshot);
+            Save(form, WidgetPose.Handle, Path.Combine(outputDir, $"preview-handle-{name}-{suffix}.png"));
+        }
+
         form.Close();
     }
 
@@ -619,14 +654,18 @@ internal static class Program
 
     // ---------------------------------------------------------------- 工具
 
-    private static void Save(WidgetForm form, StatusSnapshot snapshot, string path)
+    private static void Save(WidgetForm form, WidgetPose pose, string path)
     {
-        form.SetStatus(snapshot);
-        form.Refresh();
-        Pump(30);
-        using var bitmap = form.Snapshot();
-        bitmap?.Save(path, ImageFormat.Png);
-        Console.WriteLine($"saved {Path.GetFileName(path)}");
+        using var bitmap = form.SnapshotPose(pose);
+        if (bitmap is null)
+        {
+            // 别静默失败：null 说明没建句柄或客户区为 0，等于没出图。
+            Console.Error.WriteLine($"挂件截图失败（{pose}）：{Path.GetFileName(path)}");
+            return;
+        }
+
+        bitmap.Save(path, ImageFormat.Png);
+        Console.WriteLine($"saved {Path.GetFileName(path)}（{bitmap.Width}×{bitmap.Height}）");
     }
 
     private static void Pump(int ms)

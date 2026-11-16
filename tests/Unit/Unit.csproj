@@ -34,6 +34,7 @@
     <Compile Include="..\..\Fluent.cs" />
     <Compile Include="..\..\Models.cs" />
     <Compile Include="..\..\Balance.cs" />
+    <Compile Include="..\..\SessionProbe.cs" />
     <Compile Include="..\..\DshSession.cs" />
     <Compile Include="..\..\LoopbackAuthServer.cs" />
     <Compile Include="..\..\Native.cs" />

@@ -37,9 +37,9 @@
 
 <img src="docs/shell-start.png" width="860"/>
 
-**挂件卡片**（深色 / 浅色）：
+**挂件**（平时只是贴边的一枚图标，运行中自己转；鼠标靠近才长大成浮层。完全收起时留一根 6×28 的拉手，颜色即状态。深色 / 浅色）：
 
-<img src="docs/preview-running.png" width="420"/> <img src="docs/preview-running-light.png" width="420"/>
+<img src="docs/preview-icon-running.png" width="120"/> <img src="docs/preview-icon-running-light.png" width="120"/> <img src="docs/preview-running.png" width="420"/> <img src="docs/preview-running-light.png" width="420"/>
 
 **托盘菜单**（运行中第一格是「打开」；停止时会换成可点的「启动」）：
 
@@ -185,7 +185,7 @@ DshOrbit.csproj        主工程（net10.0-windows, WinForms, 单文件发布）
 Program.cs             入口：单实例、命令行开关
 Fluent.cs              设计令牌与绘制原语（WinUI 3 × Material 3）
 FluentControls.cs      Fluent 按钮 / 输入框（对话框用）
-WidgetForm.cs          挂件卡片（分层窗口 + 自绘）
+WidgetForm.cs          挂件（贴边图标 ⇄ 浮层接力变形，分层窗口 + 自绘）
 WidgetApp.cs           状态机：探测、启停、托盘、外壳、管道命令
 WebShell.cs            WebView2 外壳（自绘标题栏 + 多标签）
 StartPage.cs           新标签页（原生绘制）
