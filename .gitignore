@@ -12,3 +12,8 @@ dist-lite/
 
 # 离屏渲染产物（本地自查用）
 artifacts/
+
+# 设计样例与代理工作区（过程稿，不入库）
+widget-mockup.html
+widget-mockups/
+.omo/
