@@ -106,6 +106,9 @@ internal sealed class WidgetConfig
     /// <summary>贴边隐藏：拖到屏幕左右边缘时收起，鼠标移到边缘热区再滑出。</summary>
     public bool EdgeHideEnabled { get; set; } = true;
 
+    /// <summary>前台有全屏窗口（含无边框全屏）时自动隐藏挂件。</summary>
+    public bool HideInFullscreen { get; set; } = true;
+
     /// <summary>当前吸附的边（None / Left / Right）。</summary>
     public DockSide DockSide { get; set; } = DockSide.None;
 

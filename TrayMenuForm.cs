@@ -549,17 +549,24 @@ internal sealed class TrayMenuForm : Form
     {
         0 => new RowData("lock", "lock", "锁定穿透", _state.Locked ? "开" : "关", null, true),
         1 => new RowData("edge", "panel-left", "贴边隐藏", _state.EdgeHideEnabled ? "开" : "关", null, true),
-        2 => new RowData("shell", "monitor", "外壳关闭时", _state.ShellHide ? "隐藏" : "关闭", null, true),
-        3 => new RowData("eye", "eye", _state.Visible ? "隐藏挂件" : "显示挂件", null, null, true),
-        4 => new RowData(
+        2 => new RowData(
+            "fullscreen",
+            "app-window",
+            "全屏时隐藏",
+            _state.HideInFullscreen ? "开" : "关",
+            null,
+            true),
+        3 => new RowData("shell", "monitor", "外壳关闭时", _state.ShellHide ? "隐藏" : "关闭", null, true),
+        4 => new RowData("eye", "eye", _state.Visible ? "隐藏挂件" : "显示挂件", null, null, true),
+        5 => new RowData(
             "copy",
             "copy",
             AuthLinks.HasAuthenticatedLink ? "复制登录地址" : "复制地址",
             null,
             null,
             _state.HasUrl),
-        5 => new RowData("logs", "file-text", "打开日志", null, null, true),
-        6 => new RowData("exit", "power", "退出", null, Fluent.Critical, true),
+        6 => new RowData("logs", "file-text", "打开日志", null, null, true),
+        7 => new RowData("exit", "power", "退出", null, Fluent.Critical, true),
         _ => throw new ArgumentOutOfRangeException(nameof(index)),
     };
 
@@ -799,7 +806,7 @@ internal sealed class TrayMenuForm : Form
         y += 1 + Gap;
 
         // 菜单行贴齐卡片左右边：DrawMenuRow 自带 12px 内边距与 4px 悬停背板。
-        var rows = new RectangleF[7];
+        var rows = new RectangleF[8];
         for (var i = 0; i < rows.Length; i++)
         {
             rows[i] = Box(0, y, CardWidth, RowHeight);
@@ -860,7 +867,8 @@ internal sealed record MenuState(
     bool EdgeHideEnabled,
     bool Visible,
     bool ShellHide,
-    AutoStartMode AutoStart)
+    AutoStartMode AutoStart,
+    bool HideInFullscreen = true)
 {
     public bool LayoutNormal => !LayoutBottom && !LayoutTop;
 }

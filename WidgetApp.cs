@@ -46,6 +46,12 @@ internal sealed class WidgetApp : ApplicationContext
     private (DateTime At, TimeSpan Cpu)? _cpuSample;
     private bool _exitConfirmed;
 
+    /// <summary>当前这次隐藏是「全屏自动隐藏」，不是用户动作；恢复时只看它。</summary>
+    private bool _fullscreenHidden;
+
+    /// <summary>全屏期间用户手动唤出过挂件：直到退出全屏都不再自动藏回去。</summary>
+    private bool _fullscreenSuppressed;
+
     /// <summary>会话数节流间隔：扫 40+ 个小 JSON 要几十毫秒，不能每个心跳都做。</summary>
     private static readonly TimeSpan SessionProbeInterval = TimeSpan.FromSeconds(15);
 
@@ -217,10 +223,74 @@ internal sealed class WidgetApp : ApplicationContext
         // 系统主题/强调色变了就跟着变（每个心跳读一次注册表，开销可忽略）。
         Fluent.Refresh();
 
+        UpdateFullscreenHidden();
         RefreshActiveSessions();
         UpdateMetrics();
         _form.SetStatus(BuildSnapshot());
         UpdateTray();
+    }
+
+    /// <summary>
+    /// 全屏自动隐藏：1 秒一次的前台探测（几次 user32 调用，不值得上线程/定时器）。
+    /// 只改窗口可见性，绝不写 <c>_config.Visible</c>——那是「用户想不想看到挂件」的持久意愿，
+    /// 自动隐藏不落盘；恢复时也只看 <see cref="_fullscreenHidden"/> 与 <c>_config.Visible</c>。
+    /// </summary>
+    private void UpdateFullscreenHidden()
+    {
+        if (!_config.HideInFullscreen)
+        {
+            // 开关关掉：不探测；如果正因全屏而藏着，立刻恢复。
+            if (!_fullscreenHidden)
+            {
+                return;
+            }
+
+            _fullscreenHidden = false;
+            _fullscreenSuppressed = false;
+            AppPaths.Log("全屏自动隐藏已关闭：恢复挂件");
+            RestoreWidgetWindow();
+            return;
+        }
+
+        if (!FullscreenProbe.IsFullscreenForeground())
+        {
+            // 退出全屏：压制标记到期，若这次隐藏来自全屏就恢复。
+            _fullscreenSuppressed = false;
+            if (!_fullscreenHidden)
+            {
+                return;
+            }
+
+            _fullscreenHidden = false;
+            AppPaths.Log("退出全屏窗口：恢复挂件");
+            RestoreWidgetWindow();
+            return;
+        }
+
+        // 已因全屏隐藏 / 本次全屏内用户手动唤出过 / 用户本来就不想看到：都不动。
+        if (_fullscreenHidden || _fullscreenSuppressed || !_config.Visible)
+        {
+            return;
+        }
+
+        _fullscreenHidden = true;
+        AppPaths.Log("检测到全屏窗口：隐藏挂件");
+        _form.Hide();
+    }
+
+    /// <summary>
+    /// 把挂件放回屏幕，并重新应用「置底 / 置顶 / 普通」——重新 Show 之后窗口的 Z 序会被重置。
+    /// 用户自己不想看到挂件（<c>_config.Visible == false</c>）时什么都不做。
+    /// </summary>
+    private void RestoreWidgetWindow()
+    {
+        if (!_config.Visible)
+        {
+            return;
+        }
+
+        _form.Show();
+        _form.ApplyZOrderMode(_config);
     }
 
     /// <summary>
@@ -880,13 +950,30 @@ internal sealed class WidgetApp : ApplicationContext
     {
         _config.Visible = true;
         JsonIo.Save(AppPaths.ConfigFile, _config);
+
+        // 全屏正在生效时手动唤出：记下压制，本次全屏内不再自动藏回去。
+        if (_fullscreenHidden || FullscreenProbe.IsFullscreenForeground())
+        {
+            _fullscreenHidden = false;
+            _fullscreenSuppressed = true;
+        }
+
         _form.Show();
+        _form.ApplyZOrderMode(_config);
         _form.Refresh();
     }
 
     /// <summary>托盘左键：显示挂件；如果贴着屏幕边缘且已收起，就滑出来并保持几秒。</summary>
     private void RevealWidgetFromTray()
     {
+        // 全屏自动隐藏期间唤出：先恢复显示 + 压制本次全屏的自动隐藏，再走原来的贴边滑出。
+        if (_fullscreenHidden)
+        {
+            _fullscreenHidden = false;
+            _fullscreenSuppressed = true;
+            RestoreWidgetWindow();
+        }
+
         if (!_config.Visible)
         {
             ShowWidget();
@@ -899,9 +986,26 @@ internal sealed class WidgetApp : ApplicationContext
 
     private void HideWidget()
     {
+        // 用户明确隐藏了：不需要「退出全屏后恢复」再插一脚。
+        _fullscreenHidden = false;
         _config.Visible = false;
         JsonIo.Save(AppPaths.ConfigFile, _config);
         _form.Hide();
+    }
+
+    /// <summary>
+    /// 托盘开关「全屏时隐藏」。翻转后立刻探测一次，让开关即时生效：
+    /// 关掉时若正被全屏藏着要马上回来；打开时若正处在全屏里要马上藏起来。
+    /// </summary>
+    private void ToggleFullscreenHide()
+    {
+        _config.HideInFullscreen = !_config.HideInFullscreen;
+        JsonIo.Save(AppPaths.ConfigFile, _config);
+        _fullscreenSuppressed = false;
+        AppPaths.Log(_config.HideInFullscreen ? "全屏时隐藏：开" : "全屏时隐藏：关");
+
+        UpdateFullscreenHidden();
+        _form.Invalidate();
     }
 
     private void SavePosition()
@@ -963,9 +1067,11 @@ internal sealed class WidgetApp : ApplicationContext
             LayoutTop: _config.AlwaysOnTop,
             Locked: _config.ClickThrough,
             EdgeHideEnabled: _config.EdgeHideEnabled,
-            Visible: _config.Visible,
+            // 自动隐藏期间窗口是收着的，菜单行要显示「显示挂件」。
+            Visible: _config.Visible && !_fullscreenHidden,
             ShellHide: _config.ShellClose == ShellCloseMode.Hide,
-            AutoStart: AutoStart.GetMode());
+            AutoStart: AutoStart.GetMode(),
+            HideInFullscreen: _config.HideInFullscreen);
 
         var menu = new TrayMenuForm(state, OnMenuCommand);
         _trayMenu = menu;
@@ -1003,6 +1109,9 @@ internal sealed class WidgetApp : ApplicationContext
             case "edge":
                 ToggleEdgeHide();
                 break;
+            case "fullscreen":
+                ToggleFullscreenHide();
+                break;
             case "shell":
                 _config.ShellClose = _config.ShellClose == ShellCloseMode.Hide
                     ? ShellCloseMode.Close
@@ -1033,7 +1142,9 @@ internal sealed class WidgetApp : ApplicationContext
                 ApplyTheme(AppTheme.Dark);
                 break;
             case "eye":
-                if (_config.Visible)
+                // 菜单行文案与这里的判断必须同口径：全屏自动隐藏期间也算「不可见」，
+                // 点了就是唤出（并压制本次全屏的自动隐藏），不能再走 HideWidget。
+                if (_config.Visible && !_fullscreenHidden)
                 {
                     HideWidget();
                 }

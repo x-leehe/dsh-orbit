@@ -38,6 +38,7 @@
     <Compile Include="..\..\DshSession.cs" />
     <Compile Include="..\..\LoopbackAuthServer.cs" />
     <Compile Include="..\..\Native.cs" />
+    <Compile Include="..\..\FullscreenProbe.cs" />
     <Compile Include="..\..\LayeredSurface.cs" />
     <Compile Include="..\..\DshMark.cs" />
     <Compile Include="..\..\OrbitMark.cs" />

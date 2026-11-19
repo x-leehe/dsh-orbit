@@ -71,4 +71,43 @@ public class MenuStateTests
         Assert.Equal(AutoStartMode.FullAuto, state.AutoStart);
         Assert.True(state.LayoutNormal);
     }
+
+    /// <summary>「全屏时隐藏」默认开：既有调用点不传这个参数时行为不变。</summary>
+    [Fact]
+    public void HideInFullscreen_DefaultsToTrue()
+    {
+        var state = State(false, false);
+
+        Assert.True(state.HideInFullscreen);
+    }
+
+    [Fact]
+    public void WithExpression_ChangesOnlyHideInFullscreen()
+    {
+        var open = new MenuState(
+            Running: true,
+            Starting: false,
+            HasUrl: true,
+            LayoutBottom: true,
+            LayoutTop: false,
+            Locked: true,
+            EdgeHideEnabled: true,
+            Visible: true,
+            ShellHide: true,
+            AutoStart: AutoStartMode.Enabled);
+
+        var closed = open with { HideInFullscreen = false };
+
+        Assert.True(open.HideInFullscreen);
+        Assert.False(closed.HideInFullscreen);
+        Assert.Equal(open.Running, closed.Running);
+        Assert.Equal(open.HasUrl, closed.HasUrl);
+        Assert.Equal(open.LayoutBottom, closed.LayoutBottom);
+        Assert.Equal(open.LayoutTop, closed.LayoutTop);
+        Assert.Equal(open.Locked, closed.Locked);
+        Assert.Equal(open.EdgeHideEnabled, closed.EdgeHideEnabled);
+        Assert.Equal(open.Visible, closed.Visible);
+        Assert.Equal(open.ShellHide, closed.ShellHide);
+        Assert.Equal(open.AutoStart, closed.AutoStart);
+    }
 }

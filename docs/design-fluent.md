@@ -217,6 +217,10 @@ new Ripple().Begin(point) + Ripple.Draw(g, bounds, radius, tint)
 **无障碍**：`prefers-reduced-motion` 的等价物是"—关闭动画"时标记静止、morph 直接切终态（保留图标/浮层两态），
 不靠动画传达状态；状态色与文字始终是唯一信息来源。
 
+**全屏自动隐藏**：前台出现全屏窗口（含无边框全屏）时直接 `Hide()`，退出全屏再 `Show()` 并重放 Z 序，
+没有动画（与用户点「隐藏挂件」同款）。它只改窗口可见性，**不写 `config.Visible`**——
+「用户想不想看到挂件」是持久意愿，自动隐藏不落盘；全屏期间用户唤出过就整段压制，直到退出全屏。
+
 ### 4.2 托盘菜单（300 宽，外加 10px 阴影边距）
 
 ```
@@ -232,6 +236,7 @@ new Ripple().Begin(point) + Ripple.Draw(g, bounds, radius, tint)
 │ ────────────────────────────────── │
 │ 🔒 锁定穿透                     开  │ 36px 行
 │ ▤  贴边隐藏                     开  │
+│ ▣  全屏时隐藏                    开  │
 │ ▣  外壳关闭时                  隐藏  │
 │ ◐  隐藏挂件                         │
 │ ⧉  复制地址                          │
@@ -243,6 +248,7 @@ new Ripple().Begin(point) + Ripple.Draw(g, bounds, radius, tint)
 - 行高 36、图标 16、左右内边距 12、hover 背板 4px 圆角
 - 键盘：↑↓ 移动、Enter 触发、Esc 关闭
 - 关闭时播放 120ms 淡出（可选）
+- 全屏时隐藏：前台全屏（含无边框）时自动隐藏挂件，退出后恢复；受 `config.HideInFullscreen` 控制
 
 ### 4.3 浏览器外壳
 
