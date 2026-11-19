@@ -3,8 +3,10 @@
 #   pwsh tools/changelog.ps1 -Validate                 # 校验格式 + csproj 版本必须有条目
 #   pwsh tools/changelog.ps1 -Version 0.2.0            # 打印该版本正文（发版用）
 #   pwsh tools/changelog.ps1 -Version 0.2.0 -Out x.md  # 写文件
+#   pwsh tools/changelog.ps1 -Version 0.2.2-bugfix     # 补丁版：tag 可带 -bugfix 后缀
 #
-# 规则：标题必须是 `## [x.y.z] - YYYY-MM-DD`；同一版本不能重复；正文至少 80 字符。
+# 规则：标题必须是 `## [x.y.z] - YYYY-MM-DD`（补丁版允许 `## [x.y.z-bugfix] - YYYY-MM-DD`）；
+#       同一版本不能重复；正文至少 80 字符。
 
 param(
     [string]$Version,
@@ -46,8 +48,9 @@ if ($headings.Count -eq 0) {
 
 $versions = @{}
 foreach ($heading in $headings) {
-    if ($heading.Text -notmatch '^\[?(\d+\.\d+\.\d+)\]?\s*-\s*(\d{4}-\d{2}-\d{2})$') {
-        Fail "标题格式不合法：'## $($heading.Text)'，应为 '## [x.y.z] - YYYY-MM-DD'"
+    # 版本号：主版本.次版本.补丁，补丁发版允许带 -bugfix 之类的后缀（tag 与 csproj 同口径）。
+    if ($heading.Text -notmatch '^\[?(\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.\-]*)?)\]?\s*-\s*(\d{4}-\d{2}-\d{2})$') {
+        Fail "标题格式不合法：'## $($heading.Text)'，应为 '## [x.y.z] - YYYY-MM-DD'（补丁版可写成 '## [x.y.z-bugfix] - YYYY-MM-DD'）"
     }
 
     $parsed = $matches[1]

@@ -10,6 +10,8 @@
 ```
 
 正文按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 分组：`新增` / `变更` / `修复` / `移除`。
+补丁发版允许带后缀，标题写成 `## [x.y.z-bugfix] - YYYY-MM-DD`，tag 与 `<Version>` 用同一个
+`x.y.z-bugfix`（门禁脚本会原样比对，不会把后缀剥掉）。
 发版前把 `DshOrbit.csproj` 的 `<Version>` 改成同一条目的版本号，CI 会校验两者一致。
 
 ## [0.2.1] - 2026-11-16

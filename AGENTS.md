@@ -116,7 +116,8 @@ dotnet run --project tests/Render -c Release -- artifacts/gallery --only menu
 
 `CHANGELOG.md` 是 release 正文的**唯一来源**，没有条目就发不出去：
 
-1. 在 `CHANGELOG.md` 顶部加一节，标题严格为 `## [x.y.z] - YYYY-MM-DD`，正文按 `新增 / 变更 / 修复 / 移除` 分组；
+1. 在 `CHANGELOG.md` 顶部加一节，标题严格为 `## [x.y.z] - YYYY-MM-DD`（补丁发版可写成
+   `## [x.y.z-bugfix] - YYYY-MM-DD`），正文按 `新增 / 变更 / 修复 / 移除` 分组；
 2. 把 `DshOrbit.csproj` 的 `<Version>` 改成同一个版本号；
 3. 本地自检：`pwsh tools/changelog.ps1 -Validate`（校验格式 + csproj 版本必须有条目）；
 4. `.github/workflows/release.yml` 的第一道关卡就是 `tools/changelog.ps1 -Version <tag>`，
