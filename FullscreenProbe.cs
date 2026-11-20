@@ -7,7 +7,8 @@ namespace DshOrbit;
 /// <summary>
 /// 前台全屏探针：当前台窗口占满整个显示器时返回 true，挂件据此自动隐藏。
 /// 只做判定——不返回句柄、不写日志、不缓存；检测失败一律当「不是全屏」。
-/// 纯几何部分在 <see cref="CoversMonitor"/>，单测只测那一层。
+/// 可单测的两层：<see cref="CountsAsFullscreen"/>（最大化 / 标题栏的状态判定）
+/// 与 <see cref="CoversMonitor"/>（纯几何覆盖，2px 容差）。
 /// </summary>
 internal static class FullscreenProbe
 {
@@ -79,18 +80,24 @@ internal static class FullscreenProbe
             return false;
         }
 
-        // 明确排除最大化窗口。取舍：任务栏设成「自动隐藏」时，普通最大化窗口正好盖满整个显示器，
-        // 而那并不是用户想看全屏；真正的无边框全屏 / F11 / 游戏独占全屏都不是 maximize 状态，
-        // 所以这条不会漏判。代价是「本身就最大化的外壳程序」被放过——宁可少藏，不要误藏。
-        if (Native.IsZoomed(hwnd))
-        {
-            return false;
-        }
+        // 普通最大化窗口的形态是「IsZoomed + 仍有 WS_CAPTION」：任务栏设为自动隐藏时它也会铺满显示器，
+        // 但那不是全屏。Chromium 系（Brave / Chrome / Edge）的 F11 / 视频全屏恰好是
+        // 「IsZoomed + 没有 WS_CAPTION」，屏幕上就是真全屏——所以这里不能一刀切按 IsZoomed 排除。
+        var zoomed = Native.IsZoomed(hwnd);
+        var style = Native.GetWindowLong(hwnd, Native.GWL_STYLE);
+        var hasCaption = (style & Native.WS_CAPTION) == Native.WS_CAPTION;
 
         var window = WindowBounds(hwnd);
         var monitor = MonitorBounds(hwnd);
-        return CoversMonitor(window, monitor);
+        return CountsAsFullscreen(zoomed, hasCaption, window, monitor);
     }
+
+    /// <summary>
+    /// 纯判定：给出「最大化 / 是否还有标题栏 / 几何」，决定它算不算全屏。
+    /// 只有「最大化 + 有标题栏」的普通窗口被放过；其余情况全看几何覆盖。
+    /// </summary>
+    internal static bool CountsAsFullscreen(bool zoomed, bool hasCaption, Rectangle window, Rectangle monitor)
+        => !(zoomed && hasCaption) && CoversMonitor(window, monitor);
 
     /// <summary>
     /// 纯几何判定：窗口矩形是否完整覆盖显示器矩形（四边容差 2px）。

@@ -109,6 +109,27 @@ public class FullscreenProbeTests
         Assert.False(FullscreenProbe.CoversMonitor(new Rectangle(0, 0, 1920, 1080), left));
     }
 
+    [Theory]
+    [InlineData(true, true, false)]    // 普通最大化：有标题栏 → 不算全屏（任务栏自动隐藏也会铺满）
+    [InlineData(true, false, true)]    // Chromium 全屏（Brave/Chrome 的 F11、视频全屏）→ 算全屏
+    [InlineData(false, true, true)]    // 非最大化但铺满（部分视频播放器全屏）→ 算全屏
+    [InlineData(false, false, true)]
+    public void CountsAsFullscreen_IgnoresOnlyOrdinaryMaximized(bool zoomed, bool hasCaption, bool expected)
+    {
+        Assert.Equal(expected, FullscreenProbe.CountsAsFullscreen(zoomed, hasCaption, Primary, Primary));
+    }
+
+    [Fact]
+    public void CountsAsFullscreen_StillRequiresGeometry()
+    {
+        // 非最大化又没有标题栏，但只盖住屏幕一角：几何不满足就不是全屏。
+        var small = new Rectangle(0, 0, 800, 600);
+        Assert.False(FullscreenProbe.CountsAsFullscreen(false, false, small, Primary));
+
+        // 同样几何下「最大化 + 有标题栏」被放过，结果一致但原因不同。
+        Assert.False(FullscreenProbe.CountsAsFullscreen(true, true, Primary, Primary));
+    }
+
     [Fact]
     public void WindowSpanningBothMonitors_CountsOnEach()
     {
