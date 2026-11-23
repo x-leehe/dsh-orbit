@@ -26,7 +26,7 @@ internal sealed class SettingsForm : Form
 
     private static readonly (string Title, string Description)[] SectionInfo =
     [
-        ("外观", "主题与挂件不透明度，保存后立即生效。"),
+        ("外观", "主题与挂件不透明度，点「确定」或「应用」后立即生效。"),
         ("挂件", "层级、贴边与全屏行为；贴边隐藏与点击穿透互斥。"),
         ("启动", "开机启动方式；启动参数与工作目录影响下一次拉起 dsh。"),
         ("DSH", "Profile、端口与本地 dsh；路径类改动下次启动生效。"),
@@ -60,8 +60,11 @@ internal sealed class SettingsForm : Form
     private readonly SettingsField _balanceInterval = new();
     private readonly SettingsField _pluginInterval = new();
     private readonly FluentButton _reset = new();
+    private readonly FluentButton _savePreset = new();
+    private readonly FluentButton _restorePreset = new();
     private readonly FluentButton _cancel = new();
-    private readonly FluentButton _save = new();
+    private readonly FluentButton _ok = new();
+    private readonly FluentButton _apply = new();
     private readonly FluentButton _copy = new();
     private readonly FluentButton _logs = new();
     private readonly FluentButton _clearLogs = new();
@@ -71,6 +74,7 @@ internal sealed class SettingsForm : Form
     private int _section;
     private int _navHover = -1;
     private string _error = "";
+    private string _notice = "";
 
     public SettingsForm(
         SettingsModel model,
@@ -176,14 +180,27 @@ internal sealed class SettingsForm : Form
         _reset.Role = SurfaceRole.Standard;
         _reset.Click += (_, _) => ResetToDefaults();
 
+        _savePreset.Text = "保存预设";
+        _savePreset.Role = SurfaceRole.Standard;
+        _savePreset.Click += (_, _) => SavePreset();
+
+        _restorePreset.Text = "恢复预设";
+        _restorePreset.Role = SurfaceRole.Standard;
+        _restorePreset.Enabled = SettingsPresetStore.Exists();
+        _restorePreset.Click += (_, _) => RestorePreset();
+
+        _ok.Text = "确定";
+        _ok.Role = SurfaceRole.Accent;
+        _ok.IsDefault = true;
+        _ok.Click += (_, _) => Apply(close: true);
+
         _cancel.Text = "取消";
         _cancel.Role = SurfaceRole.Standard;
         _cancel.Click += (_, _) => Close();
 
-        _save.Text = "保存";
-        _save.Role = SurfaceRole.Accent;
-        _save.IsDefault = true;
-        _save.Click += (_, _) => Save();
+        _apply.Text = "应用";
+        _apply.Role = SurfaceRole.Standard;
+        _apply.Click += (_, _) => Apply(close: false);
 
         _copy.Text = "复制地址";
         _copy.Role = SurfaceRole.Standard;
@@ -224,8 +241,11 @@ internal sealed class SettingsForm : Form
         }
 
         Controls.Add(_reset);
+        Controls.Add(_savePreset);
+        Controls.Add(_restorePreset);
+        Controls.Add(_ok);
         Controls.Add(_cancel);
-        Controls.Add(_save);
+        Controls.Add(_apply);
         Controls.Add(_close);
     }
 
@@ -297,7 +317,8 @@ internal sealed class SettingsForm : Form
         return true;
     }
 
-    private void Save()
+    /// <summary>「确定」= 应用后关窗；「应用」= 应用但保持打开（工具栏 / 面板继续用）。</summary>
+    private void Apply(bool close)
     {
         if (!TryCollect(out var error) || !_model.TryValidate(out error))
         {
@@ -306,7 +327,62 @@ internal sealed class SettingsForm : Form
         }
 
         _onSave(_model, (AutoStartMode)_autoStart.SelectedIndex);
-        Close();
+        SetError("");
+        SetNotice("已应用");
+
+        if (close)
+        {
+            Close();
+        }
+    }
+
+    /// <summary>
+    /// 「保存预设」：把当前编辑态存到 `preset.json`（单槽位、覆盖式）。
+    /// 不要求先「应用」，但会先校验，免得存进一份非法配置。
+    /// </summary>
+    private void SavePreset()
+    {
+        if (!TryCollect(out var error) || !_model.TryValidate(out error))
+        {
+            SetError(error);
+            return;
+        }
+
+        if (SettingsPresetStore.Exists())
+        {
+            var answer = MessageBox.Show(
+                this,
+                "已经有保存过的预设了。要用当前设置覆盖它吗？",
+                "保存预设",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question,
+                MessageBoxDefaultButton.Button2);
+
+            if (answer != DialogResult.Yes)
+            {
+                return;
+            }
+        }
+
+        SettingsPresetStore.Save(_model);
+        _restorePreset.Enabled = SettingsPresetStore.Exists();
+        SetError("");
+        SetNotice("预设已保存（恢复预设 可随时载回）");
+    }
+
+    /// <summary>「恢复预设」：把预设载入面板，点「确定 / 应用」才真正生效。</summary>
+    private void RestorePreset()
+    {
+        var preset = SettingsPresetStore.Load();
+        if (preset is null)
+        {
+            SetError("还没有保存过预设");
+            return;
+        }
+
+        BindModel(preset.Settings, (AutoStartMode)_autoStart.SelectedIndex);
+        SetError("");
+        SetNotice($"已载入预设（{preset.SavedAt.LocalDateTime:MM-dd HH:mm}），点「确定」或「应用」生效");
     }
 
     private void ResetToDefaults()
@@ -314,11 +390,28 @@ internal sealed class SettingsForm : Form
         var defaults = SettingsModel.Defaults();
         BindModel(defaults, (AutoStartMode)_autoStart.SelectedIndex);
         SetError("");
+        SetNotice("已恢复默认值，点「确定」或「应用」生效");
     }
 
     private void SetError(string error)
     {
         _error = error;
+        if (!string.IsNullOrEmpty(error))
+        {
+            _notice = "";
+        }
+
+        Invalidate();
+    }
+
+    private void SetNotice(string notice)
+    {
+        _notice = notice;
+        if (!string.IsNullOrEmpty(notice))
+        {
+            _error = "";
+        }
+
         Invalidate();
     }
 
@@ -433,9 +526,18 @@ internal sealed class SettingsForm : Form
         // 页脚
         var footerTop = DesignHeight - FooterHeight;
         var buttonY = footerTop + 20;
-        _reset.Bounds = new Rectangle(S(24), S(buttonY), S(104), S(32));
-        _save.Bounds = new Rectangle(S(DesignWidth - 24 - 88), S(buttonY), S(88), S(32));
-        _cancel.Bounds = new Rectangle(S(DesignWidth - 24 - 88 - 8 - 88), S(buttonY), S(88), S(32));
+        // 左侧：恢复默认 / 保存预设 / 恢复预设
+        _reset.Bounds = new Rectangle(S(24), S(buttonY), S(96), S(32));
+        _savePreset.Bounds = new Rectangle(S(24 + 96 + 8), S(buttonY), S(96), S(32));
+        _restorePreset.Bounds = new Rectangle(S(24 + ((96 + 8) * 2)), S(buttonY), S(96), S(32));
+
+        // 右侧：确定 / 取消 / 应用（左→右，Windows 属性表口径；确定是默认按钮）
+        var applyX = DesignWidth - 24 - 88;
+        var cancelX = applyX - 8 - 88;
+        var okX = cancelX - 8 - 88;
+        _ok.Bounds = new Rectangle(S(okX), S(buttonY), S(88), S(32));
+        _cancel.Bounds = new Rectangle(S(cancelX), S(buttonY), S(88), S(32));
+        _apply.Bounds = new Rectangle(S(applyX), S(buttonY), S(88), S(32));
 
         // 标题栏关闭按钮
         _close.Bounds = new Rectangle(S(DesignWidth - 20 - 32), S(10), S(32), S(32));
@@ -663,6 +765,19 @@ internal sealed class SettingsForm : Form
                 StringTrimming.EllipsisCharacter,
                 scale);
         }
+        else if (!string.IsNullOrEmpty(_notice))
+        {
+            Fluent.Text(
+                g,
+                _notice,
+                TextRole.Caption,
+                false,
+                Fluent.TextSecondary,
+                new RectangleF(S(24), S(top + 2), S(DesignWidth - 48), S(16)),
+                StringAlignment.Near,
+                StringTrimming.EllipsisCharacter,
+                scale);
+        }
     }
 
     private Rectangle NavRect(int index)
@@ -742,7 +857,7 @@ internal sealed class SettingsForm : Form
         else if (e.Control && e.KeyCode == Keys.S)
         {
             e.Handled = true;
-            Save();
+            Apply(close: true);
         }
     }
 

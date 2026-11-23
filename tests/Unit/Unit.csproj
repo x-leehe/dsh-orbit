@@ -35,6 +35,7 @@
     <Compile Include="..\..\Models.cs" />
     <Compile Include="..\..\ConfigStore.cs" />
     <Compile Include="..\..\SettingsModel.cs" />
+    <Compile Include="..\..\SettingsPresetStore.cs" />
     <Compile Include="..\..\MenuCommand.cs" />
     <Compile Include="..\..\FullscreenPolicy.cs" />
     <Compile Include="..\..\StatusAggregator.cs" />
