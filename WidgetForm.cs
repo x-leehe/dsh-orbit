@@ -68,7 +68,9 @@ internal sealed class WidgetForm : Form
     private const int MetaTop = 68;      // 元信息 16
     private const int DividerTop = 92;   // 分隔线 1
     private const int StatsTop = 104;    // 2×2 第一行（标签与数值同一基线，行高 20）
-    private const int StatsPitch = 40;   // 两行行距（基线差 40）
+    // 两行行距：行高 20 + 空档 12。40（空档 20，等于空一整行）会把 2×2 拆成两组、看着像少了一行；
+    // 32 让两行成为一个块，同时与下方按钮（180）留出 24 的分组间距。
+    private const int StatsPitch = 32;
     private const int StatsRowH = 20;    // 每格一行：12 标签 + 14 数值同行
     private const int ButtonsTop = 180;  // 底部按钮 32，底边距 16
     private const int ButtonW = 76;
