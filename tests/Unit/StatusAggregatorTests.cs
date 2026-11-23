@@ -12,7 +12,8 @@ public class StatusAggregatorTests
         bool online = false,
         bool hostRunning = false,
         bool starting = false,
-        int? port = null) => new(
+        int? port = null,
+        bool showBalance = true) => new(
         Online: online,
         HostRunning: hostRunning,
         Starting: starting,
@@ -27,6 +28,7 @@ public class StatusAggregatorTests
         PluginDisabled: 2,
         PluginNames: "a、b",
         PluginScanning: false,
+        ShowBalance: showBalance,
         Balance: 26.36m,
         SpentToday: 8.61m,
         OffPeak: true,
@@ -102,5 +104,17 @@ public class StatusAggregatorTests
         var snapshot = StatusAggregator.Build(Inputs() with { Hint = "启动超时，查看日志" });
 
         Assert.Equal("启动超时，查看日志", snapshot.Hint);
+    }
+
+    [Fact]
+    public void ShowBalanceOff_DropsMoneyButKeepsPeak()
+    {
+        var snapshot = StatusAggregator.Build(Inputs(showBalance: false));
+
+        Assert.Null(snapshot.Balance);
+        Assert.Null(snapshot.SpentToday);
+        // 峰谷是纯时段信息，不受「显示余额」影响
+        Assert.True(snapshot.OffPeak);
+        Assert.Equal(TimeSpan.FromMinutes(12), snapshot.UntilPriceSwitch);
     }
 }

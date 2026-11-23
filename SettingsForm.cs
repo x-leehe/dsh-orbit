@@ -162,7 +162,7 @@ internal sealed class SettingsForm : Form
         _shellClose.Labels = ["隐藏", "关闭"];
 
         _showBalance.Label = "显示余额";
-        _showBalance.Description = "关闭后不请求余额接口，也不显示今日已用";
+        _showBalance.Description = "关闭后不请求余额接口，浮层与托盘不显示余额 / 今日已用（峰谷仍显示）";
 
         _apiKey.Label = "DeepSeek API Key（留空自动查找）";
         _apiKey.Placeholder = "sk-…";

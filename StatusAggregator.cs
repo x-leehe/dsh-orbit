@@ -16,6 +16,7 @@ internal readonly record struct StatusInputs(
     int? PluginDisabled,
     string PluginNames,
     bool PluginScanning,
+    bool ShowBalance,
     decimal? Balance,
     decimal? SpentToday,
     bool OffPeak,
@@ -52,8 +53,10 @@ internal static class StatusAggregator
             PluginDisabled = input.PluginDisabled,
             PluginNames = input.PluginNames,
             PluginScanning = input.PluginScanning,
-            Balance = input.Balance,
-            SpentToday = input.SpentToday,
+            // 「显示余额」关掉时快照里不带金额：渲染层与托盘提示都靠 null 走「—」/省略，
+            // 免得最后一笔旧值一直挂着（看起来像设置没生效）。峰谷是纯时段信息，仍然保留。
+            Balance = input.ShowBalance ? input.Balance : null,
+            SpentToday = input.ShowBalance ? input.SpentToday : null,
             OffPeak = input.OffPeak,
             UntilPriceSwitch = input.UntilPriceSwitch,
             ActiveSessions = input.ActiveSessions,

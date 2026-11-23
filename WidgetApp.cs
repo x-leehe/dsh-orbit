@@ -349,6 +349,7 @@ internal sealed class WidgetApp : ApplicationContext
             PluginDisabled: _pluginDisabled,
             PluginNames: _pluginNames,
             PluginScanning: _pluginScanning,
+            ShowBalance: _config.ShowBalance,
             Balance: _balance.Balance,
             SpentToday: _balance.SpentToday,
             OffPeak: BalanceService.IsOffPeak(now),
@@ -640,6 +641,7 @@ internal sealed class WidgetApp : ApplicationContext
             Status = _config.StatusIntervalSeconds,
             Balance = _config.BalanceIntervalSeconds,
             Plugin = _config.PluginIntervalSeconds,
+            ShowBalance = _config.ShowBalance,
         };
 
         model.ApplyTo(_config);
@@ -689,6 +691,12 @@ internal sealed class WidgetApp : ApplicationContext
         if (autoStart != AutoStart.GetMode())
         {
             AutoStart.SetMode(autoStart);
+        }
+
+        if (_config.ShowBalance && !before.ShowBalance)
+        {
+            // 从「关」切回「开」：别等下一个余额周期，立刻拉一次。
+            _ = RefreshBalanceAsync();
         }
 
         _form.Invalidate();

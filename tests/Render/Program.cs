@@ -283,6 +283,28 @@ internal static class Program
             Save(form, WidgetPose.Icon, Path.Combine(outputDir, $"preview-icon-{name}-{suffix}.png"));
         }
 
+        // 关闭「显示余额」：快照里金额为 null，两格都应是「—」，峰谷仍保留。
+        form.SetStatus(new StatusSnapshot
+        {
+            State = DshState.Running,
+            Profile = "web",
+            Version = "0.25.4",
+            Port = 3080,
+            DisplayUrl = "http://127.0.0.1:3080/",
+            Uptime = new TimeSpan(0, 2, 6, 22),
+            MemoryBytes = 268L * 1024 * 1024,
+            CpuPercent = 3,
+            PluginTotal = 12,
+            PluginDisabled = 2,
+            PluginNames = "dsh-qqbot",
+            Balance = null,
+            SpentToday = null,
+            OffPeak = false,
+            UntilPriceSwitch = TimeSpan.FromMinutes(192),
+            ActiveSessions = 3,
+        });
+        Save(form, WidgetPose.Flyout, Path.Combine(outputDir, $"preview-nobalance-{suffix}.png"));
+
         // 穿透态：完整卡片、底部两枚按钮换成一行说明（鼠标直接落到桌面）。
         form.SetStatus(running);
         form.ApplyClickThrough(true);

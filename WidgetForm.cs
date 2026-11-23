@@ -1555,8 +1555,8 @@ internal sealed class WidgetForm : Form
             "余额", _status.Balance is { } balance ? Money.Cny(balance) : "—",
             _status.Balance is null ? Fluent.TextTertiary : Fluent.TextPrimary);
         DrawMetric(g, left, row2, column, statsAlpha,
-            "今日已用", _status.SpentToday is { } spent ? Money.Cny(spent) : "¥0.00",
-            Fluent.TextPrimary);
+            "今日已用", _status.SpentToday is { } spent ? Money.Cny(spent) : "—",
+            _status.SpentToday is null ? Fluent.TextTertiary : Fluent.TextPrimary);
         DrawMetric(g, left + column + W(ColumnGap), row2, column, statsAlpha, "峰谷", peak.Text, peak.Color);
 
         // 底部按钮组：右对齐、各 76 宽、间距 8。
