@@ -45,6 +45,7 @@ $icons = [ordered]@{
     'circle-stop'   = 'circle-stop'
     'check'         = 'check'
     'search'        = 'search'
+    'settings'      = 'settings'
 }
 
 function Convert-SvgToSpec([string]$svg) {

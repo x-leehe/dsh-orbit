@@ -160,6 +160,16 @@ internal static class Native
     [DllImport("user32.dll")]
     public static extern IntPtr GetForegroundWindow();
 
+    // ---- 无边框窗口拖动（标题栏） ----
+    public const int WM_NCLBUTTONDOWN = 0x00A1;
+    public const int HTCAPTION = 2;
+
+    [DllImport("user32.dll")]
+    public static extern bool ReleaseCapture();
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
     // ---- Windows 11 圆角 ----
     private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
     private const int DWMWCP_ROUND = 2;

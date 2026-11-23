@@ -8,7 +8,7 @@ namespace DshOrbit;
 /// 离屏渲染真实界面，产出文档截图与设计自查图。
 /// 用法：
 ///   RenderPreview.exe &lt;输出目录&gt;                 挂件 + 菜单 + 新标签页（浅/深）
-///   RenderPreview.exe &lt;目录&gt; --only menu           只渲染某一面（widget/menu/start/dialog/shell/chrome/tokens）
+///   RenderPreview.exe &lt;目录&gt; --only menu           只渲染某一面（widget/menu/settings/start/dialog/shell/chrome/tokens）
 ///   RenderPreview.exe &lt;目录&gt; --shell &lt;url&gt;        截取真实外壳窗口
 ///   RenderPreview.exe &lt;目录&gt; --only chrome         只画标题栏 + 工具条（不建 WebView2，可像素级核对文字）
 ///   RenderPreview.exe &lt;目录&gt; --icons               图标对照表
@@ -81,6 +81,11 @@ internal static class Program
             if (only is null or "dialog")
             {
                 RenderDialog(outputDir, suffix);
+            }
+
+            if (only is null or "settings")
+            {
+                RenderSettings(outputDir, suffix);
             }
 
             if (only is null or "chrome")
@@ -395,6 +400,45 @@ internal static class Program
         bitmap.Save(Path.Combine(outputDir, $"dialog-{suffix}.png"), ImageFormat.Png);
         Console.WriteLine($"saved dialog-{suffix}.png");
         dialog.Close();
+    }
+
+    // ---------------------------------------------------------------- 设置面板
+
+    private static void RenderSettings(string outputDir, string suffix)
+    {
+        var sections = new (string Key, int Index)[]
+        {
+            ("appearance", 0),
+            ("widget", 1),
+            ("launch", 2),
+            ("dsh", 3),
+            ("data", 4),
+        };
+
+        foreach (var (key, index) in sections)
+        {
+            using var form = new SettingsForm(
+                SettingsModel.From(new WidgetConfig()),
+                AutoStartMode.FullAuto,
+                "环境变量 DEEPSEEK_API_KEY",
+                (_, _) => { },
+                _ => { })
+            {
+                StartPosition = FormStartPosition.Manual,
+                Location = new Point(-6000, -6000),
+                ShowInTaskbar = false,
+            };
+
+            form.SelectSection(index);
+            form.Show();
+            Pump(160);
+
+            using var bitmap = new Bitmap(form.Width, form.Height);
+            form.DrawToBitmap(bitmap, new Rectangle(0, 0, form.Width, form.Height));
+            bitmap.Save(Path.Combine(outputDir, $"settings-{key}-{suffix}.png"), ImageFormat.Png);
+            Console.WriteLine($"saved settings-{key}-{suffix}.png");
+            form.Close();
+        }
     }
 
     // ---------------------------------------------------------------- 外壳

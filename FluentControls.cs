@@ -165,6 +165,14 @@ internal sealed class FluentTextBox : Control
         set => _inner.PlaceholderText = value;
     }
 
+    /// <summary>密码框（API Key 用）：只换输入掩码，不影响取值。</summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool Password
+    {
+        get => _inner.UseSystemPasswordChar;
+        set => _inner.UseSystemPasswordChar = value;
+    }
+
     public void FocusInput() => _inner.Focus();
 
     private void OnThemeChanged()

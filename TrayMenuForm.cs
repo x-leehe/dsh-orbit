@@ -578,7 +578,8 @@ internal sealed class TrayMenuForm : Form
             null,
             _state.HasUrl),
         6 => new RowData(MenuCommand.Logs, "file-text", "打开日志", null, null, true),
-        7 => new RowData(MenuCommand.Exit, "power", "退出", null, Fluent.Critical, true),
+        7 => new RowData(MenuCommand.Settings, "settings", "设置…", null, null, true),
+        8 => new RowData(MenuCommand.Exit, "power", "退出", null, Fluent.Critical, true),
         _ => throw new ArgumentOutOfRangeException(nameof(index)),
     };
 
@@ -818,7 +819,7 @@ internal sealed class TrayMenuForm : Form
         y += 1 + Gap;
 
         // 菜单行贴齐卡片左右边：DrawMenuRow 自带 12px 内边距与 4px 悬停背板。
-        var rows = new RectangleF[8];
+        var rows = new RectangleF[9];
         for (var i = 0; i < rows.Length; i++)
         {
             rows[i] = Box(0, y, CardWidth, RowHeight);

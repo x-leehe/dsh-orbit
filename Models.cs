@@ -193,6 +193,9 @@ internal static class Startup
     /// <summary>启动后自动拉起 dsh web（开机自启「全自动」）。</summary>
     public static bool AutoStartDsh { get; set; }
 
+    /// <summary>启动后打开设置面板（--settings）。</summary>
+    public static bool OpenSettingsOnStart { get; set; }
+
     public static void Start() => _startTicks = Environment.TickCount64;
 
     public static long ElapsedMs => _startTicks == 0 ? 0 : Environment.TickCount64 - _startTicks;

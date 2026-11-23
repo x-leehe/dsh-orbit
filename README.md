@@ -80,6 +80,15 @@
 - 外观三态：跟随系统 / 浅色 / 深色
 - 键盘操作：↑↓ 移动、Enter 触发、Esc 关闭
 - 锁定穿透、贴边隐藏、全屏时隐藏、外壳关闭行为、复制登录地址、打开日志
+- 「设置…」打开设置面板
+
+**设置面板**（WinUI Settings 形态，左侧分区 + 右侧单页）
+- 外观：主题、挂件不透明度（0.3–1.0，实时预览）
+- 挂件：层级、贴边隐藏、点击穿透、全屏时隐藏、显示挂件
+- 启动：开机启动三态、启动参数、工作目录
+- DSH：Profile、首选端口、`dsh.exe` 路径、内置外壳、外壳关闭行为、显示余额
+- 数据：DeepSeek API Key、状态/余额/插件刷新间隔、复制地址、打开日志
+- 全部字段都能在面板里改，不再需要手改 `config.json`；保存后由主程序统一应用，路径类改动会提示下次启动生效
 
 ## 前置条件
 
@@ -125,6 +134,7 @@
 
 ```powershell
 DSH-Orbit --show-window   # 保证挂件在跑 + dsh web 在跑 + Web 窗口在前台
+DSH-Orbit --settings      # 打开设置面板（已运行时通过命名管道唤起）
 DSH-Orbit                 # 不带参数 = 只启动挂件卡片
 DSH-Orbit --uninstall     # 卸载（应用和功能里的卸载项也指向这里）
 ```
@@ -187,13 +197,19 @@ Program.cs             入口：单实例、命令行开关
 Fluent.cs              设计令牌与绘制原语（WinUI 3 × Material 3）
 FluentControls.cs      Fluent 按钮 / 输入框（对话框用）
 WidgetForm.cs          挂件（贴边图标 ⇄ 浮层接力变形，分层窗口 + 自绘）
-WidgetApp.cs           状态机：探测、启停、托盘、外壳、管道命令
+WidgetApp.cs           状态机：探测、启停、托盘、外壳、设置应用、管道命令
+ConfigStore.cs         config.json 的唯一入口（读取 / 归一化 / 原子写 / 迁移版本）
+SettingsModel.cs       设置面板的编辑态与校验（可单测）
+SettingsForm.cs        设置面板（左侧分区 + 右侧单页，不透明窗口）
+SettingsControls.cs    设置面板控件：开关 / 分段 / 滑杆 / 文本字段
+MenuCommand.cs         托盘与设置面板共用的命令 ID
+ChinaHolidays.cs       中国法定节假日年表（拉取 / 缓存 / 降级）
 WebShell.cs            WebView2 外壳（自绘标题栏 + 多标签）
 StartPage.cs           新标签页（原生绘制）
 TrayMenuForm.cs        托盘右键菜单
 AddEngineDialog.cs     添加搜索引擎对话框
 DshServices.cs         dsh 发现 / 启动 / 插件统计
-Balance.cs             DeepSeek 余额与今日用量
+Balance.cs             DeepSeek 余额与今日用量、峰谷时段
 LoopbackAuthServer.cs  本地登录中转
 Icons.cs / SvgPath.cs / LucideData.cs / OrbitMark.cs / DshMark.cs   图标与标志
 docs/design-fluent.md  界面规范（令牌、版式、每个界面的规格）

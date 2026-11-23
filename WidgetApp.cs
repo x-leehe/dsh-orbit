@@ -9,6 +9,7 @@ internal sealed class WidgetApp : ApplicationContext
 {
     private readonly WidgetConfig _config;
     private readonly ConfigStore _store;
+    private SettingsForm? _settingsForm;
     private LoopbackAuthServer? _authServer;
     private readonly WidgetForm _form;
     private readonly NotifyIcon _tray;
@@ -219,6 +220,13 @@ internal sealed class WidgetApp : ApplicationContext
         {
             _ = Task.Delay(400).ContinueWith(
                 _ => BeginInvokeOnUi(() => _ = ShowWindowAsync()),
+                TaskScheduler.Default);
+        }
+
+        if (Startup.OpenSettingsOnStart)
+        {
+            _ = Task.Delay(350).ContinueWith(
+                _ => BeginInvokeOnUi(OpenSettings),
                 TaskScheduler.Default);
         }
     }
@@ -725,6 +733,12 @@ internal sealed class WidgetApp : ApplicationContext
             return;
         }
 
+        if (string.Equals(command, "settings", StringComparison.OrdinalIgnoreCase))
+        {
+            _ = BeginInvokeOnUi(OpenSettings);
+            return;
+        }
+
         if (!string.Equals(command, "show-window", StringComparison.OrdinalIgnoreCase))
         {
             return;
@@ -910,24 +924,40 @@ internal sealed class WidgetApp : ApplicationContext
     }
 
     /// <summary>
-    /// 贴边隐藏开关。两个方向都要处理互斥：
+    /// 设置 / 托盘共用的贴边开关。两个方向都要处理互斥：
     /// 开 → 先解除点击穿透（否则 DockTo 会被窗口侧的守卫拒绝），再贴到最近的左右边；
     /// 关 → 解除贴边并记住当前位置。
+    /// 调用方传入的是「目标状态」，所以设置面板整表重放时也能正确执行副作用。
     /// </summary>
-    private void ToggleEdgeHide()
+    private void SetEdgeHide(bool enabled)
     {
-        if (_config.EdgeHideEnabled)
+        if (!enabled)
         {
+            var changed = _config.EdgeHideEnabled || _config.DockSide != DockSide.None;
             _config.EdgeHideEnabled = false;
-            _form.Undock();
+            if (_config.DockSide != DockSide.None)
+            {
+                _form.Undock();
+            }
+
             _config.DockSide = DockSide.None;
             _config.X = _form.Left;
             _config.Y = _form.Top;
-            _store.Save();
+            if (changed)
+            {
+                _store.Save();
+            }
+
             return;
         }
 
         _config.EdgeHideEnabled = true;
+
+        // 已经贴边了就别重复挪窗口（设置面板每次保存都会重放一遍目标状态）。
+        if (_config.DockSide != DockSide.None && _form.DockSide != DockSide.None)
+        {
+            return;
+        }
 
         // 互斥：先关穿透（ApplyClickThrough(false) 不动形态，完整卡片保持），
         // 不先关的话下面的 DockTo 会直接 return。
@@ -950,6 +980,133 @@ internal sealed class WidgetApp : ApplicationContext
         {
             _config.DockSide = side;
             _store.Save();
+        }
+    }
+
+    private void ToggleEdgeHide() => SetEdgeHide(!_config.EdgeHideEnabled);
+
+    // ---------------------------------------------------------------- 设置面板
+
+    /// <summary>打开设置面板（单例；已开着就激活）。</summary>
+    private void OpenSettings()
+    {
+        if (_settingsForm is { IsDisposed: false } existing)
+        {
+            existing.Activate();
+            return;
+        }
+
+        var form = new SettingsForm(
+            SettingsModel.From(_config),
+            AutoStart.GetMode(),
+            _balance.KeySourceText,
+            ApplySettings,
+            OnMenuCommand);
+
+        form.FormClosed += (_, _) =>
+        {
+            if (ReferenceEquals(_settingsForm, form))
+            {
+                _settingsForm = null;
+            }
+        };
+
+        _settingsForm = form;
+        form.Show();
+    }
+
+    /// <summary>
+    /// 设置面板保存后统一应用：先写配置，再按「改了什么」动窗口 / 定时器 / 开机自启。
+    /// 路径、端口、Profile 只影响下一次拉起 dsh，这里不做重启（面板里有提示）。
+    /// </summary>
+    private void ApplySettings(SettingsModel model, AutoStartMode autoStart)
+    {
+        var before = new
+        {
+            Theme = _config.Theme,
+            AlwaysBottom = _config.AlwaysBottom,
+            AlwaysOnTop = _config.AlwaysOnTop,
+            ClickThrough = _config.ClickThrough,
+            Visible = _config.Visible,
+            ShellClose = _config.ShellClose,
+            Status = _config.StatusIntervalSeconds,
+            Balance = _config.BalanceIntervalSeconds,
+            Plugin = _config.PluginIntervalSeconds,
+        };
+
+        model.ApplyTo(_config);
+        _store.Save();
+
+        if (_config.Theme != before.Theme)
+        {
+            Fluent.SetMode(_config.Theme);
+        }
+
+        if (_config.ClickThrough != before.ClickThrough)
+        {
+            _form.ApplyClickThrough(_config.ClickThrough);
+        }
+
+        SetEdgeHide(_config.EdgeHideEnabled);
+
+        if (_config.AlwaysBottom != before.AlwaysBottom || _config.AlwaysOnTop != before.AlwaysOnTop)
+        {
+            _form.ApplyZOrderMode(_config);
+        }
+
+        if (_config.Visible != before.Visible)
+        {
+            if (_config.Visible)
+            {
+                ShowWidget();
+            }
+            else
+            {
+                HideWidget();
+            }
+        }
+
+        if (_config.ShellClose != before.ShellClose && _shell is { IsDisposed: false } shell)
+        {
+            shell.CloseMode = _config.ShellClose;
+        }
+
+        if (_config.StatusIntervalSeconds != before.Status ||
+            _config.BalanceIntervalSeconds != before.Balance ||
+            _config.PluginIntervalSeconds != before.Plugin)
+        {
+            ApplyTimerIntervals();
+        }
+
+        if (autoStart != AutoStart.GetMode())
+        {
+            AutoStart.SetMode(autoStart);
+        }
+
+        _form.Invalidate();
+        _form.Refresh();
+        AppPaths.Log(
+            $"设置已保存：主题={_config.Theme}，层级={LayoutName()}，贴边={_config.EdgeHideEnabled}，"
+            + $"全屏隐藏={_config.HideInFullscreen}，外壳关闭={_config.ShellClose}");
+    }
+
+    private string LayoutName() =>
+        _config.AlwaysBottom ? "置底" : _config.AlwaysOnTop ? "置顶" : "普通";
+
+    /// <summary>刷新间隔改了要重启计时器，否则新 Interval 不会立刻重排下一次 Tick。</summary>
+    private void ApplyTimerIntervals()
+    {
+        _probeTimer.Interval = Math.Max(1, _config.StatusIntervalSeconds) * 1000;
+        _pluginTimer.Interval = Math.Max(30, _config.PluginIntervalSeconds) * 1000;
+        _balanceTimer.Interval = Math.Max(20, _config.BalanceIntervalSeconds) * 1000;
+
+        foreach (var timer in new[] { _probeTimer, _pluginTimer, _balanceTimer })
+        {
+            if (timer.Enabled)
+            {
+                timer.Stop();
+                timer.Start();
+            }
         }
     }
 
@@ -1167,6 +1324,9 @@ internal sealed class WidgetApp : ApplicationContext
             case MenuCommand.Logs:
                 OpenLogFolder();
                 break;
+            case MenuCommand.Settings:
+                OpenSettings();
+                break;
             case MenuCommand.Exit:
                 RequestExit();
                 break;
@@ -1320,6 +1480,7 @@ internal sealed class WidgetApp : ApplicationContext
             _tray.Dispose();
             _shell?.ForceClose();
             _trayMenu?.Dispose();
+            _settingsForm?.Dispose();
             _form.Dispose();
         }
 

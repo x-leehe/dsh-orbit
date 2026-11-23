@@ -30,6 +30,16 @@ internal sealed class BalanceService : IDisposable
     public string? LastError { get; private set; }
     public DateTime? LastSuccess { get; private set; }
     public string? KeySource => _keySource;
+
+    /// <summary>Key 来源的中文说明（设置面板的数据分区显示用）。</summary>
+    public string KeySourceText => _keySource switch
+    {
+        "config" => "配置文件",
+        "env" => "环境变量 DEEPSEEK_API_KEY",
+        "credentials.yaml" => "~/.dsh/.credentials.yaml",
+        _ => "未找到（余额不可用）",
+    };
+
     public bool HasKey => !string.IsNullOrWhiteSpace(_key);
 
     // ---------------------------------------------------------------- 峰谷

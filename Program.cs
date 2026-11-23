@@ -19,12 +19,16 @@ internal static class Program
         var wantsShowWindow = HasFlag(args, "--show-window") || HasFlag(args, "--open-web");
         var wantsReveal = HasFlag(args, "--reveal");
         var wantsFullAuto = HasFlag(args, "--autostart-full");
+        var wantsSettings = HasFlag(args, "--settings");
 
         using var mutex = new Mutex(true, @"Local\DSH-Orbit.SingleInstance", out var isFirstInstance);
         if (!isFirstInstance)
         {
             // 已经有挂件在跑：按参数通知它，自己直接退出（不再弹对话框）。
-            var command = wantsShowWindow ? "show-window" : wantsReveal ? "reveal" : "show";
+            var command = wantsShowWindow ? "show-window"
+                : wantsSettings ? "settings"
+                : wantsReveal ? "reveal"
+                : "show";
             if (SingleInstance.TrySend(command))
             {
                 return;
@@ -41,6 +45,7 @@ internal static class Program
         Startup.Start();
         Startup.OpenWebOnStart = wantsShowWindow;
         Startup.AutoStartDsh = wantsFullAuto;
+        Startup.OpenSettingsOnStart = wantsSettings;
 
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
         Application.ThreadException += (_, e) => AppPaths.Log($"未处理异常：{e.Exception}");

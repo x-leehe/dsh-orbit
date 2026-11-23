@@ -22,6 +22,11 @@
     <Compile Include="..\..\Fluent.cs" />
     <Compile Include="..\..\FluentControls.cs" />
     <Compile Include="..\..\Models.cs" />
+    <Compile Include="..\..\ConfigStore.cs" />
+    <Compile Include="..\..\SettingsModel.cs" />
+    <Compile Include="..\..\MenuCommand.cs" />
+    <Compile Include="..\..\SettingsControls.cs" />
+    <Compile Include="..\..\SettingsForm.cs" />
     <Compile Include="..\..\Native.cs" />
     <Compile Include="..\..\Ui.cs" />
     <Compile Include="..\..\LayeredSurface.cs" />
