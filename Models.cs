@@ -253,6 +253,12 @@ internal static class AppPaths
 
     public static string LogFile => Path.Combine(Root, "widget.log");
 
+    /// <summary>widget.log 超限轮转后的备份（只留一份）。</summary>
+    public static string LogBackupFile => Path.Combine(Root, "widget.1.log");
+
+    /// <summary>dsh 运行日志目录（每次拉起一个 `dsh-*.log`）。</summary>
+    public static string LogDirectory => Path.Combine(Root, "logs");
+
     public static void Ensure()
     {
         Directory.CreateDirectory(Root);

@@ -36,6 +36,7 @@ internal sealed class SettingsForm : Form
     private readonly SettingsModel _model;
     private readonly Action<SettingsModel, AutoStartMode> _onSave;
     private readonly Action<string>? _onCommand;
+    private readonly Action? _onClearLogs;
     private readonly string _keySource;
 
     private readonly SettingsSegmented _theme = new();
@@ -63,6 +64,7 @@ internal sealed class SettingsForm : Form
     private readonly FluentButton _save = new();
     private readonly FluentButton _copy = new();
     private readonly FluentButton _logs = new();
+    private readonly FluentButton _clearLogs = new();
     private readonly FluentButton _close = new();
     private readonly List<Control[]> _sectionControls = new();
 
@@ -75,11 +77,13 @@ internal sealed class SettingsForm : Form
         AutoStartMode autoStart,
         string keySource,
         Action<SettingsModel, AutoStartMode> onSave,
-        Action<string>? onCommand = null)
+        Action<string>? onCommand = null,
+        Action? onClearLogs = null)
     {
         _model = model;
         _onSave = onSave;
         _onCommand = onCommand;
+        _onClearLogs = onClearLogs;
         _keySource = keySource;
 
         Text = "DSH-Orbit 设置";
@@ -191,6 +195,11 @@ internal sealed class SettingsForm : Form
         _logs.Width = 96;
         _logs.Click += (_, _) => _onCommand?.Invoke(MenuCommand.Logs);
 
+        _clearLogs.Text = "清理日志";
+        _clearLogs.Role = SurfaceRole.Standard;
+        _clearLogs.Width = 96;
+        _clearLogs.Click += (_, _) => _onClearLogs?.Invoke();
+
         _close.Text = "";
         _close.IconName = "x";
         _close.Role = SurfaceRole.Subtle;
@@ -201,7 +210,7 @@ internal sealed class SettingsForm : Form
         var widget = new Control[] { _layout, _edge, _clickThrough, _hideFullscreen, _visible };
         var launch = new Control[] { _autoStart, _launchArgs, _workDir };
         var dsh = new Control[] { _profile, _port, _dshPath, _useShell, _shellClose, _showBalance };
-        var data = new Control[] { _apiKey, _statusInterval, _balanceInterval, _pluginInterval, _copy, _logs };
+        var data = new Control[] { _apiKey, _statusInterval, _balanceInterval, _pluginInterval, _copy, _logs, _clearLogs };
         var appearance = new Control[] { _theme, _opacity };
 
         _sectionControls.AddRange([appearance, widget, launch, dsh, data]);
@@ -419,6 +428,7 @@ internal sealed class SettingsForm : Form
         _pluginInterval.Bounds = new Rectangle(S(ContentX + 16 + ((intervalWidth + 8) * 2)), S(232), S(intervalWidth), S(76));
         _copy.Bounds = new Rectangle(S(ContentX + 16), S(320), S(96), S(32));
         _logs.Bounds = new Rectangle(S(ContentX + 16 + 104), S(320), S(96), S(32));
+        _clearLogs.Bounds = new Rectangle(S(ContentX + 16 + 208), S(320), S(96), S(32));
 
         // 页脚
         var footerTop = DesignHeight - FooterHeight;

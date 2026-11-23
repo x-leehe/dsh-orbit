@@ -38,6 +38,7 @@
     <Compile Include="..\..\MenuCommand.cs" />
     <Compile Include="..\..\FullscreenPolicy.cs" />
     <Compile Include="..\..\StatusAggregator.cs" />
+    <Compile Include="..\..\LogHousekeeping.cs" />
     <Compile Include="..\..\ChinaHolidays.cs" />
     <Compile Include="..\..\Balance.cs" />
     <Compile Include="..\..\SessionProbe.cs" />

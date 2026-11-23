@@ -205,6 +205,9 @@ internal sealed class WidgetApp : ApplicationContext
         _dsh.UpdateMetrics();
         _form.SetStatus(BuildSnapshot());
         UpdateTray();
+
+        // 日志清理：24 小时内只跑一次，内部丢后台线程，失败只记日志。
+        LogHousekeeping.RunIfDue();
     }
 
     /// <summary>
@@ -605,7 +608,8 @@ internal sealed class WidgetApp : ApplicationContext
             AutoStart.GetMode(),
             _balance.KeySourceText,
             ApplySettings,
-            OnMenuCommand);
+            OnMenuCommand,
+            ClearLogs);
 
         form.FormClosed += (_, _) =>
         {
@@ -967,6 +971,17 @@ internal sealed class WidgetApp : ApplicationContext
         _config.AlwaysOnTop = top;
         _store.Save();
         _form.ApplyZOrderMode(_config);
+    }
+
+    /// <summary>设置面板「清理日志」：轮转 widget.log + 删旧 dsh 日志，结果用气泡提示。</summary>
+    private void ClearLogs()
+    {
+        var (deleted, bytes) = LogHousekeeping.ClearAll();
+        _tray.ShowBalloonTip(
+            3000,
+            "日志已清理",
+            $"删除 {deleted} 个旧日志（{bytes / 1024.0:0.0} KB）；当前 widget.log 已轮转为 widget.1.log。",
+            ToolTipIcon.Info);
     }
 
     private void CopyUrl()
