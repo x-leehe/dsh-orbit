@@ -13,7 +13,8 @@ internal sealed class WidgetApp : ApplicationContext
     private SettingsForm? _settingsForm;
     private LoopbackAuthServer? _authServer;
     private readonly WidgetForm _form;
-    private readonly NotifyIcon _tray;
+    private readonly TrayIcon _tray;
+    private readonly ShellController _shells;
     private readonly BalanceService _balance = new();
     private readonly System.Windows.Forms.Timer _uiTimer = new();
     private readonly System.Windows.Forms.Timer _probeTimer = new();
@@ -30,7 +31,6 @@ internal sealed class WidgetApp : ApplicationContext
     private readonly SemaphoreSlim _balanceGate = new(1, 1);
 
     private TrayMenuForm? _trayMenu;
-    private WebShell? _shell;
     private int? _pluginTotal;
     private int? _pluginDisabled;
     private string _pluginNames = "";
@@ -60,6 +60,9 @@ internal sealed class WidgetApp : ApplicationContext
         _dsh = new DshLifecycle(() => _config, _cts.Token);
         _dsh.Changed += Tick;
 
+        // Web 外壳：单例窗口的打开 / 切换 / 关闭都在控制器里；拿不到外壳时回落到系统浏览器。
+        _shells = new ShellController(() => _config, OpenInBrowser);
+
         // 老配置里「点击穿透」和「贴边隐藏」可能同时为真：互斥规则统一在 ConfigStore 里，
         // 归一化后立刻落盘，别把非法组合留在磁盘上。
         if (ConfigStore.Normalize(_config))
@@ -70,8 +73,7 @@ internal sealed class WidgetApp : ApplicationContext
         // 令牌层必须在任何窗口创建前就绪（配色、字体都从它取）。
         Fluent.Init(_config.Theme);
 
-        _form = new WidgetForm(_config);
-        _form.StartStopRequested += () => _ = ToggleDshAsync();
+        _form = new WidgetForm(_config);        _form.StartStopRequested += () => _ = ToggleDshAsync();
         _form.OpenRequested += OpenWebUi;
         _form.LockRequested += ToggleLock;   // 窗口侧由「右键图标」触发，别删这条订阅
         _form.Moved += SavePosition;
@@ -94,27 +96,11 @@ internal sealed class WidgetApp : ApplicationContext
             _saveTimer.Start();
         };
 
-        _tray = new NotifyIcon
-        {
-            Visible = true,
-            Text = "DSH-Orbit",
-            Icon = IconFactory.Create(Fluent.TextTertiary),
-        };
         // 单击 = 显示挂件（贴边收起了就滑出来，停留 4 秒）；双击 = 打开 DSH Web；右键 = 菜单。
-        _tray.MouseUp += (_, e) =>
-        {
-            if (e.Button == MouseButtons.Right)
-            {
-                ShowTrayMenu();
-                return;
-            }
-
-            if (e.Button == MouseButtons.Left)
-            {
-                RevealWidgetFromTray();
-            }
-        };
-        _tray.DoubleClick += (_, _) => OpenWebUi();
+        _tray = new TrayIcon();
+        _tray.LeftClick += RevealWidgetFromTray;
+        _tray.RightClick += ShowTrayMenu;
+        _tray.DoubleClick += OpenWebUi;
 
         Fluent.Changed += OnThemeChanged;
 
@@ -370,26 +356,7 @@ internal sealed class WidgetApp : ApplicationContext
             Hint: _dsh.Hint));
     }
 
-    private void OnStatusChanged()
-    {
-        var snapshot = _form.Status;
-        _tray.Icon = IconFactory.Create(snapshot.Accent);
-
-        var text = snapshot.State switch
-        {
-            DshState.Running => $"DSH 运行中 · 端口 {snapshot.Port}",
-            DshState.Starting => "DSH 启动中…",
-            DshState.Error => "DSH 异常 · 查看日志",
-            _ => "DSH 已停止",
-        };
-
-        if (snapshot.Balance is { } balance)
-        {
-            text += $" · {Money.Cny(balance)}";
-        }
-
-        _tray.Text = text.Length > 63 ? text[..63] : text;
-    }
+    private void OnStatusChanged() => _tray.Update(_form.Status);
 
     private void UpdateTray()
     {
@@ -491,33 +458,11 @@ internal sealed class WidgetApp : ApplicationContext
 
         if (_config.UseWebShell && WebShell.IsRuntimeAvailable())
         {
-            EnsureShellVisible(url);
+            _shells.Show(url);
             return;
         }
 
         OpenInBrowser(url);
-    }
-
-    private void EnsureShellVisible(string url)
-    {
-        if (_shell is { IsDisposed: false } shell)
-        {
-            shell.CloseMode = _config.ShellClose;
-            shell.ShowUrl(url);
-            return;
-        }
-
-        var created = new WebShell(url, _config.ShellClose);
-        created.FormClosed += (_, _) =>
-        {
-            if (ReferenceEquals(_shell, created))
-            {
-                _shell = null;
-            }
-        };
-
-        _shell = created;
-        created.Show();
     }
 
     private void OpenWebUi()
@@ -531,7 +476,7 @@ internal sealed class WidgetApp : ApplicationContext
 
         if (_config.UseWebShell && WebShell.IsRuntimeAvailable())
         {
-            ToggleShell(url);
+            _shells.Toggle(url);
             return;
         }
 
@@ -548,40 +493,6 @@ internal sealed class WidgetApp : ApplicationContext
         {
             AppPaths.Log($"打开浏览器失败：{ex.Message}");
         }
-    }
-
-    /// <summary>Web 外壳：没开就开；开着就按设置收起（隐藏）或关闭，再点一次等于切换。</summary>
-    private void ToggleShell(string url)
-    {
-        if (_shell is { IsDisposed: false } shell)
-        {
-            if (shell.Visible)
-            {
-                shell.HideOrClose();
-                if (shell.CloseMode == ShellCloseMode.Close)
-                {
-                    _shell = null;
-                }
-
-                return;
-            }
-
-            shell.CloseMode = _config.ShellClose;
-            shell.ShowUrl(url);
-            return;
-        }
-
-        var created = new WebShell(url, _config.ShellClose);
-        created.FormClosed += (_, _) =>
-        {
-            if (ReferenceEquals(_shell, created))
-            {
-                _shell = null;
-            }
-        };
-
-        _shell = created;
-        created.Show();
     }
 
     private void ToggleLock()
@@ -759,9 +670,9 @@ internal sealed class WidgetApp : ApplicationContext
             }
         }
 
-        if (_config.ShellClose != before.ShellClose && _shell is { IsDisposed: false } shell)
+        if (_config.ShellClose != before.ShellClose)
         {
-            shell.CloseMode = _config.ShellClose;
+            _shells.SyncCloseMode();
         }
 
         if (_config.StatusIntervalSeconds != before.Status ||
@@ -968,10 +879,7 @@ internal sealed class WidgetApp : ApplicationContext
                 _config.ShellClose = _config.ShellClose == ShellCloseMode.Hide
                     ? ShellCloseMode.Close
                     : ShellCloseMode.Hide;
-                if (_shell is { IsDisposed: false } shell)
-                {
-                    shell.CloseMode = _config.ShellClose;
-                }
+                _shells.SyncCloseMode();
 
                 _store.Save();
                 break;
@@ -1043,11 +951,7 @@ internal sealed class WidgetApp : ApplicationContext
                 _form.Refresh();
             }
 
-            if (_shell is { IsDisposed: false } shell)
-            {
-                shell.Invalidate(true);
-                shell.Update();
-            }
+            _shells.Redraw();
 
             _trayMenu?.Invalidate(true);
         }
@@ -1167,9 +1071,8 @@ internal sealed class WidgetApp : ApplicationContext
             _holidayTimer.Dispose();
             _balance.Dispose();
             _dsh.Dispose();
-            _tray.Visible = false;
             _tray.Dispose();
-            _shell?.ForceClose();
+            _shells.Dispose();
             _trayMenu?.Dispose();
             _settingsForm?.Dispose();
             _form.Dispose();
