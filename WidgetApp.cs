@@ -9,12 +9,11 @@ internal sealed class WidgetApp : ApplicationContext
 {
     private readonly WidgetConfig _config;
     private readonly ConfigStore _store;
+    private readonly DshLifecycle _dsh;
     private SettingsForm? _settingsForm;
     private LoopbackAuthServer? _authServer;
     private readonly WidgetForm _form;
     private readonly NotifyIcon _tray;
-    private readonly DshDiscovery _discovery = new();
-    private readonly DshProcessHost _host = new();
     private readonly BalanceService _balance = new();
     private readonly System.Windows.Forms.Timer _uiTimer = new();
     private readonly System.Windows.Forms.Timer _probeTimer = new();
@@ -27,28 +26,15 @@ internal sealed class WidgetApp : ApplicationContext
     private readonly System.Windows.Forms.Timer _holidayTimer = new() { Interval = 30 * 60 * 1000 };
 
     private readonly CancellationTokenSource _cts = new();
-    private readonly SemaphoreSlim _probeGate = new(1, 1);
     private readonly SemaphoreSlim _pluginGate = new(1, 1);
     private readonly SemaphoreSlim _balanceGate = new(1, 1);
 
     private TrayMenuForm? _trayMenu;
     private WebShell? _shell;
-    private DshInstance? _instance;
-    private bool _online;
-    private bool _starting;
-    private bool _stopping;
-    private bool _userStopped;
-    private DateTime _suppressProbeUntil;
-    private DateTime? _startedAt;
-    private string? _hint;
-    private string? _version;
     private int? _pluginTotal;
     private int? _pluginDisabled;
     private string _pluginNames = "";
     private bool _pluginScanning;
-    private long _lastMemory;
-    private double? _lastCpu;
-    private (DateTime At, TimeSpan Cpu)? _cpuSample;
     private bool _exitConfirmed;
 
     /// <summary>全屏自动隐藏的状态机（隐藏 / 压制标记都在里面）。</summary>
@@ -68,6 +54,11 @@ internal sealed class WidgetApp : ApplicationContext
         _store = store;
         _config = store.Config;
         AppPaths.Ensure();
+
+        // dsh 生命周期（发现 / 启停 / 探测 / 指标）全部交给 DshLifecycle；
+        // 状态一变就重画一次快照。
+        _dsh = new DshLifecycle(() => _config, _cts.Token);
+        _dsh.Changed += Tick;
 
         // 老配置里「点击穿透」和「贴边隐藏」可能同时为真：互斥规则统一在 ConfigStore 里，
         // 归一化后立刻落盘，别把非法组合留在磁盘上。
@@ -127,13 +118,6 @@ internal sealed class WidgetApp : ApplicationContext
 
         Fluent.Changed += OnThemeChanged;
 
-        _host.Exited += () =>
-        {
-            _starting = false;
-            _startedAt = null;
-            _ = BeginInvokeOnUi(() => _ = RefreshProbeAsync());
-        };
-
         PlaceWindow();
         if (_config.Visible)
         {
@@ -151,7 +135,7 @@ internal sealed class WidgetApp : ApplicationContext
         _uiTimer.Start();
 
         _probeTimer.Interval = Math.Max(1, _config.StatusIntervalSeconds) * 1000;
-        _probeTimer.Tick += (_, _) => _ = RefreshProbeAsync();
+        _probeTimer.Tick += (_, _) => _ = _dsh.RefreshAsync();
         _probeTimer.Start();
 
         _pluginTimer.Interval = Math.Max(30, _config.PluginIntervalSeconds) * 1000;
@@ -162,14 +146,9 @@ internal sealed class WidgetApp : ApplicationContext
         _balanceTimer.Tick += (_, _) => _ = RefreshBalanceAsync();
         _balanceTimer.Start();
 
-        // 本机压根没有 dsh 时，先把话说明白（卡片上会显示这行 hint）。
-        if (DshProcessHost.LocateDshExe(_config) is null)
-        {
-            _hint = "未找到 dsh：请先安装 dsh，或手动运行 dsh web";
-        }
-
+        // 本机压根没有 dsh 时，DshLifecycle 的构造已经写好 hint（卡片上会直接显示）。
         Tick();
-        _ = RefreshProbeAsync();
+        _ = _dsh.RefreshAsync();
 
         // 冷启动只保证「窗口先出来」：版本 / 插件 / 余额都等界面稳定后再取。
         _warmupTimer.Tick += (_, _) =>
@@ -177,7 +156,7 @@ internal sealed class WidgetApp : ApplicationContext
             _warmupTimer.Stop();
             // 会话数在这里取第一次（force 跳过节流），之后交给 1 秒心跳按 15s 节流刷新。
             RefreshActiveSessions(force: true);
-            _ = RefreshVersionAsync();
+            _ = _dsh.LoadVersionAsync();
             _ = RefreshPluginsAsync();
             if (_config.ShowBalance)
             {
@@ -208,7 +187,7 @@ internal sealed class WidgetApp : ApplicationContext
         // 命令行通道：`DshStatus --show-window` 会走这里。
         SingleInstance.StartServer(OnCommandReceived, _cts.Token);
 
-        if (Startup.AutoStartDsh && !(_online || _host.IsRunning))
+        if (Startup.AutoStartDsh && !_dsh.RunningOrOnline)
         {
             StartDsh();
         }
@@ -237,7 +216,7 @@ internal sealed class WidgetApp : ApplicationContext
 
         UpdateFullscreenHidden();
         RefreshActiveSessions();
-        UpdateMetrics();
+        _dsh.UpdateMetrics();
         _form.SetStatus(BuildSnapshot());
         UpdateTray();
     }
@@ -304,135 +283,6 @@ internal sealed class WidgetApp : ApplicationContext
         _activeSessions = SessionProbe.CountActiveSessions();
     }
 
-    private async Task RefreshProbeAsync()
-    {
-        if (DateTime.UtcNow < _suppressProbeUntil)
-        {
-            return;
-        }
-
-        if (!await _probeGate.WaitAsync(0).ConfigureAwait(true))
-        {
-            return;
-        }
-
-        try
-        {
-            var ct = _cts.Token;
-
-            if (_instance is not null)
-            {
-                var alive = Native.ListenLoopbackPorts()
-                    .Any(row => row.Port == _instance.Port && row.Pid == _instance.ListenerPid);
-
-                if (alive)
-                {
-                    _online = true;
-                    _starting = false;
-                    _hint = null;
-                    Tick();
-                    return;
-                }
-
-                AppPaths.Log($"端口 {_instance.Port} 已关闭，重新扫描");
-                _instance = null;
-                _online = false;
-            }
-
-            if (_userStopped)
-            {
-                // 用户明确点过「停止」：不再自动去找别的实例附着，
-                // 否则看起来就像"停掉之后又自己开了一个"。
-                _online = false;
-                _starting = false;
-                Tick();
-                return;
-            }
-
-            var preferred = _host.LaunchedPort ?? _config.PreferredPort;
-            var found = await _discovery.FindAsync(preferred, ct).ConfigureAwait(true);
-            if (found is not null)
-            {
-                _instance = found;
-                _online = true;
-                _starting = false;
-                _hint = null;
-                AppPaths.Log(_stopping
-                    ? $"dsh 又出现在端口 {found.Port}（pid {found.ListenerPid}）——不是挂件启动的，可能是外部守护进程重新拉起"
-                    : $"附着到 dsh web：端口 {found.Port}，pid {found.ListenerPid}");
-            }
-            else
-            {
-                _online = false;
-                if (_host.IsRunning)
-                {
-                    var elapsed = _startedAt is { } started ? DateTime.Now - started : TimeSpan.Zero;
-                    if (elapsed < TimeSpan.FromSeconds(25))
-                    {
-                        _hint = "等待 dsh 监听端口…";
-                    }
-                    else
-                    {
-                        _hint = "启动超时，查看日志";
-                        _starting = false;
-                    }
-                }
-                else
-                {
-                    _hint = null;
-                }
-            }
-
-            Tick();
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (Exception ex)
-        {
-            AppPaths.Log($"刷新探测失败：{ex.Message}");
-        }
-        finally
-        {
-            _probeGate.Release();
-        }
-    }
-
-    private void UpdateMetrics()
-    {
-        _lastMemory = 0;
-        _lastCpu = null;
-
-        if (_instance is null)
-        {
-            return;
-        }
-
-        try
-        {
-            using var process = Process.GetProcessById(_instance.ListenerPid);
-            _lastMemory = process.WorkingSet64;
-
-            var now = DateTime.UtcNow;
-            var cpu = process.TotalProcessorTime;
-            if (_cpuSample is { } previous)
-            {
-                var wall = (now - previous.At).TotalSeconds;
-                if (wall > 0.2)
-                {
-                    var used = (cpu - previous.Cpu).TotalSeconds;
-                    _lastCpu = Math.Clamp(used / wall / Environment.ProcessorCount * 100.0, 0, 100);
-                }
-            }
-
-            _cpuSample = (now, cpu);
-        }
-        catch
-        {
-            _cpuSample = null;
-        }
-    }
-
     private async Task RefreshPluginsAsync()
     {
         if (!await _pluginGate.WaitAsync(0).ConfigureAwait(true))
@@ -468,26 +318,6 @@ internal sealed class WidgetApp : ApplicationContext
         }
     }
 
-    private async Task RefreshVersionAsync()
-    {
-        var exe = DshProcessHost.LocateDshExe(_config);
-        if (exe is null)
-        {
-            return;
-        }
-
-        try
-        {
-            _version = await DshInfo
-                .ReadVersionAsync(exe, TimeSpan.FromSeconds(15), _cts.Token)
-                .ConfigureAwait(true);
-            Tick();
-        }
-        catch (OperationCanceledException)
-        {
-        }
-    }
-
     private async Task RefreshBalanceAsync()
     {
         if (!_config.ShowBalance || !await _balanceGate.WaitAsync(0).ConfigureAwait(true))
@@ -514,21 +344,18 @@ internal sealed class WidgetApp : ApplicationContext
     private StatusSnapshot BuildSnapshot()
     {
         var now = DateTime.UtcNow;
-        var uptime = _instance is not null
-            ? DateTime.Now - _instance.StartedAt
-            : _host.IsRunning && _startedAt is { } started ? DateTime.Now - started : (TimeSpan?)null;
 
         return StatusAggregator.Build(new StatusInputs(
-            Online: _online,
-            HostRunning: _host.IsRunning,
-            Starting: _starting,
+            Online: _dsh.Online,
+            HostRunning: _dsh.HostRunning,
+            Starting: _dsh.Starting,
             Profile: _config.Profile,
-            Version: _version ?? "",
-            Port: _instance?.Port,
-            HasAuthenticatedUrl: _host.AuthenticatedUrl is not null,
-            Uptime: uptime,
-            MemoryBytes: _lastMemory,
-            CpuPercent: _lastCpu,
+            Version: _dsh.Version ?? "",
+            Port: _dsh.Port,
+            HasAuthenticatedUrl: _dsh.AuthenticatedUrl is not null,
+            Uptime: _dsh.Uptime,
+            MemoryBytes: _dsh.MemoryBytes,
+            CpuPercent: _dsh.CpuPercent,
             PluginTotal: _pluginTotal,
             PluginDisabled: _pluginDisabled,
             PluginNames: _pluginNames,
@@ -540,7 +367,7 @@ internal sealed class WidgetApp : ApplicationContext
             UntilPriceSwitch: BalanceService.UntilNextSwitch(now),
             // 近似会话数（15s 节流缓存）；取不到时是 null，UI 显示「—」。
             ActiveSessions: _activeSessions,
-            Hint: _hint));
+            Hint: _dsh.Hint));
     }
 
     private void OnStatusChanged()
@@ -571,112 +398,27 @@ internal sealed class WidgetApp : ApplicationContext
 
     // ---------------------------------------------------------------- 操作
 
-    private async Task ToggleDshAsync()
-    {
-        // 停止过程中再点一次，不能立刻又拉起一个新实例。
-        if (_stopping)
-        {
-            return;
-        }
-
-        if (_online || _host.IsRunning)
-        {
-            _stopping = true;
-            try
-            {
-                await StopDshAsync().ConfigureAwait(true);
-            }
-            finally
-            {
-                _stopping = false;
-            }
-        }
-        else
-        {
-            StartDsh();
-        }
-    }
+    private async Task ToggleDshAsync() =>
+        await _dsh.ToggleAsync(ConfirmStopExternal).ConfigureAwait(true);
 
     private void StartDsh()
     {
-        _userStopped = false;
-
-        if (_host.IsRunning)
+        if (!_dsh.Start(out var error))
         {
-            return;
-        }
-
-        AppPaths.Log($"启动 dsh web（工作目录 {_config.WorkingDirectory}，端口 {_config.PreferredPort}）");
-
-        if (!_host.Start(_config, out var error))
-        {
-            _hint = error;
-            _starting = false;
-            Tick();
             _tray.ShowBalloonTip(4000, "无法启动 dsh", error ?? "未知错误", ToolTipIcon.Error);
-            return;
         }
-
-        _starting = true;
-        _startedAt = DateTime.Now;
-        _hint = "等待 dsh 监听端口…";
-        // 本机压根没有 dsh 时，先把话说明白（卡片上会显示这行 hint）。
-        if (DshProcessHost.LocateDshExe(_config) is null)
-        {
-            _hint = "未找到 dsh：请先安装 dsh，或手动运行 dsh web";
-        }
-
-        Tick();
-        _ = RefreshProbeAsync();
     }
 
-    private async Task StopDshAsync()
+    /// <summary>停止外部实例前的确认：弹窗留在 UI 层，DshLifecycle 只收一个回调。</summary>
+    private bool ConfirmStopExternal(DshInstance instance)
     {
-        // 杀掉进程后端口探测会短暂看到"空窗"，把重连压后几秒，
-        // 避免界面在"已停止"和"又在运行"之间来回跳。
-        AppPaths.Log(_instance is null
-            ? "用户请求停止 dsh（挂件自己启动的实例）"
-            : $"用户请求停止 dsh（外部实例：端口 {_instance.Port}，pid {_instance.ListenerPid}）");
-
-        _suppressProbeUntil = DateTime.UtcNow.AddSeconds(4);
-        _hint = "正在停止 dsh…";
-        Tick();
-
-        if (_host.IsRunning)
-        {
-            _host.Stop();
-        }
-        else if (_instance is not null)
-        {
-            var answer = MessageBox.Show(
-                $"这会结束已经在运行的 dsh web（端口 {_instance.Port}，pid {_instance.ListenerPid}）。\n\n继续吗？",
-                "停止 dsh",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning,
-                MessageBoxDefaultButton.Button2);
-
-            if (answer != DialogResult.Yes)
-            {
-                // 用户取消了：恢复原状，别把界面留在「已停止」。
-                _userStopped = false;
-                _hint = null;
-                _suppressProbeUntil = DateTime.MinValue;
-                Tick();
-                return;
-            }
-
-            _ = DshProcessHost.KillPid(_instance.ListenerPid);
-        }
-
-        _userStopped = true;
-        _instance = null;
-        _online = false;
-        _starting = false;
-        _hint = null;
-        _cpuSample = null;
-        Tick();
-        await Task.Delay(600).ConfigureAwait(true);
-        await RefreshProbeAsync().ConfigureAwait(true);
+        var answer = MessageBox.Show(
+            $"这会结束已经在运行的 dsh web（端口 {instance.Port}，pid {instance.ListenerPid}）。\n\n继续吗？",
+            "停止 dsh",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning,
+            MessageBoxDefaultButton.Button2);
+        return answer == DialogResult.Yes;
     }
 
     /// <summary>管道命令（管道线程）→ UI 线程。</summary>
@@ -713,7 +455,7 @@ internal sealed class WidgetApp : ApplicationContext
     {
         ShowWidget();
 
-        if (!(_online || _host.IsRunning))
+        if (!_dsh.RunningOrOnline)
         {
             StartDsh();
         }
@@ -726,7 +468,7 @@ internal sealed class WidgetApp : ApplicationContext
     {
         for (var i = 0; i < 40; i++)
         {
-            if (_instance is not null || _host.AuthenticatedUrl is not null)
+            if (_dsh.HasUrl)
             {
                 break;
             }
@@ -740,12 +482,7 @@ internal sealed class WidgetApp : ApplicationContext
     /// <summary>确保外壳可见（不切换、不隐藏）。</summary>
     private void ShowShell()
     {
-        string? url = _host.AuthenticatedUrl;
-        if (url is null && _instance is not null)
-        {
-            url = $"http://127.0.0.1:{_instance.Port}/";
-        }
-
+        var url = _dsh.CurrentUrl;
         if (url is null)
         {
             _tray.ShowBalloonTip(3000, "DSH 尚未就绪", "还没发现 dsh web，稍后可以点托盘「打开 Web UI」。", ToolTipIcon.Info);
@@ -785,12 +522,7 @@ internal sealed class WidgetApp : ApplicationContext
 
     private void OpenWebUi()
     {
-        string? url = _host.AuthenticatedUrl;
-        if (url is null && _instance is not null)
-        {
-            url = $"http://127.0.0.1:{_instance.Port}/";
-        }
-
+        var url = _dsh.CurrentUrl;
         if (url is null)
         {
             _tray.ShowBalloonTip(3000, "DSH 未运行", "先点「启动 dsh」，或手动在终端运行 dsh web。", ToolTipIcon.Info);
@@ -1178,11 +910,11 @@ internal sealed class WidgetApp : ApplicationContext
     {
         _trayMenu?.Dispose();
 
-        var running = _online || _host.IsRunning;
+        var running = _dsh.RunningOrOnline;
         var state = new MenuState(
             Running: running,
-            Starting: _starting,
-            HasUrl: _instance is not null || _host.AuthenticatedUrl is not null,
+            Starting: _dsh.Starting,
+            HasUrl: _dsh.HasUrl,
             LayoutBottom: _config.AlwaysBottom,
             LayoutTop: _config.AlwaysOnTop,
             Locked: _config.ClickThrough,
@@ -1335,15 +1067,15 @@ internal sealed class WidgetApp : ApplicationContext
 
     private void CopyUrl()
     {
-        if (_instance is null)
+        if (_dsh.Port is not { } port)
         {
             return;
         }
 
         try
         {
-            AuthLinks.TokenUrl = _host.AuthenticatedUrl ?? _host.RememberedUrl;
-            var plain = $"http://127.0.0.1:{_instance.Port}/";
+            AuthLinks.TokenUrl = _dsh.AuthenticatedUrl ?? _dsh.RememberedUrl;
+            var plain = $"http://127.0.0.1:{port}/";
             Clipboard.SetText(AuthLinks.For(plain));
         }
         catch
@@ -1363,6 +1095,9 @@ internal sealed class WidgetApp : ApplicationContext
         }
     }
 
+    /// <summary>托盘「停止」/ 重启共用：停 dsh（外部实例先确认）。</summary>
+    private Task StopDshAsync() => _dsh.StopAsync(ConfirmStopExternal);
+
     private async Task RestartAsync()
     {
         await StopDshAsync().ConfigureAwait(true);
@@ -1372,7 +1107,7 @@ internal sealed class WidgetApp : ApplicationContext
 
     private void RequestExit()
     {
-        if (_host.IsRunning)
+        if (_dsh.HostRunning)
         {
             var answer = MessageBox.Show(
                 "由挂件启动的 dsh web 仍在运行。\n\n是：停止 dsh 并退出\n否：保留 dsh，只关挂件\n取消：不退出",
@@ -1388,7 +1123,7 @@ internal sealed class WidgetApp : ApplicationContext
 
             if (answer == DialogResult.Yes)
             {
-                _host.Stop();
+                _dsh.StopHost();
             }
         }
 
@@ -1431,7 +1166,7 @@ internal sealed class WidgetApp : ApplicationContext
             _warmupTimer.Dispose();
             _holidayTimer.Dispose();
             _balance.Dispose();
-            _host.Dispose();
+            _dsh.Dispose();
             _tray.Visible = false;
             _tray.Dispose();
             _shell?.ForceClose();
