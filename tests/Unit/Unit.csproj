@@ -33,6 +33,9 @@
     <Compile Include="..\..\Icons.cs" />
     <Compile Include="..\..\Fluent.cs" />
     <Compile Include="..\..\Models.cs" />
+    <Compile Include="..\..\ConfigStore.cs" />
+    <Compile Include="..\..\SettingsModel.cs" />
+    <Compile Include="..\..\MenuCommand.cs" />
     <Compile Include="..\..\ChinaHolidays.cs" />
     <Compile Include="..\..\Balance.cs" />
     <Compile Include="..\..\SessionProbe.cs" />

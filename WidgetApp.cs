@@ -8,6 +8,7 @@ namespace DshOrbit;
 internal sealed class WidgetApp : ApplicationContext
 {
     private readonly WidgetConfig _config;
+    private readonly ConfigStore _store;
     private LoopbackAuthServer? _authServer;
     private readonly WidgetForm _form;
     private readonly NotifyIcon _tray;
@@ -64,26 +65,23 @@ internal sealed class WidgetApp : ApplicationContext
     /// <summary>上次扫盘时刻；<see cref="DateTime.MinValue"/> 表示还没预热过，Tick 里不扫。</summary>
     private DateTime _lastSessionProbe = DateTime.MinValue;
 
-    public WidgetApp(WidgetConfig config)
+    public WidgetApp(ConfigStore store)
     {
-        _config = config;
+        _store = store;
+        _config = store.Config;
         AppPaths.Ensure();
 
-        // 老配置里「点击穿透」和「贴边隐藏」可能同时为真，但两者语义互斥：
-        // 穿透 = 完整卡片常驻、不贴边；贴边 = 拉手/图标/浮层接力（收不到 hover 就没法用）。
-        // 穿透优先，读盘后立刻归一化并落盘一次。
-        if (_config.ClickThrough && (_config.EdgeHideEnabled || _config.DockSide != DockSide.None))
+        // 老配置里「点击穿透」和「贴边隐藏」可能同时为真：互斥规则统一在 ConfigStore 里，
+        // 归一化后立刻落盘，别把非法组合留在磁盘上。
+        if (ConfigStore.Normalize(_config))
         {
-            AppPaths.Log("配置归一化：点击穿透与贴边隐藏互斥，已关闭贴边隐藏");
-            _config.EdgeHideEnabled = false;
-            _config.DockSide = DockSide.None;
-            JsonIo.Save(AppPaths.ConfigFile, _config);
+            _store.Save();
         }
 
         // 令牌层必须在任何窗口创建前就绪（配色、字体都从它取）。
-        Fluent.Init(config.Theme);
+        Fluent.Init(_config.Theme);
 
-        _form = new WidgetForm(config);
+        _form = new WidgetForm(_config);
         _form.StartStopRequested += () => _ = ToggleDshAsync();
         _form.OpenRequested += OpenWebUi;
         _form.LockRequested += ToggleLock;   // 窗口侧由「右键图标」触发，别删这条订阅
@@ -899,7 +897,7 @@ internal sealed class WidgetApp : ApplicationContext
         }
 
         _form.ApplyClickThrough(locked);
-        JsonIo.Save(AppPaths.ConfigFile, _config);
+        _store.Save();
         _form.Invalidate();
         Tick();
 
@@ -925,7 +923,7 @@ internal sealed class WidgetApp : ApplicationContext
             _config.DockSide = DockSide.None;
             _config.X = _form.Left;
             _config.Y = _form.Top;
-            JsonIo.Save(AppPaths.ConfigFile, _config);
+            _store.Save();
             return;
         }
 
@@ -951,14 +949,14 @@ internal sealed class WidgetApp : ApplicationContext
         if (_config.DockSide != side)
         {
             _config.DockSide = side;
-            JsonIo.Save(AppPaths.ConfigFile, _config);
+            _store.Save();
         }
     }
 
     private void ShowWidget()
     {
         _config.Visible = true;
-        JsonIo.Save(AppPaths.ConfigFile, _config);
+        _store.Save();
 
         // 全屏正在生效时手动唤出：记下压制，本次全屏内不再自动藏回去。
         if (_fullscreenHidden || FullscreenProbe.IsFullscreenForeground())
@@ -998,7 +996,7 @@ internal sealed class WidgetApp : ApplicationContext
         // 用户明确隐藏了：不需要「退出全屏后恢复」再插一脚。
         _fullscreenHidden = false;
         _config.Visible = false;
-        JsonIo.Save(AppPaths.ConfigFile, _config);
+        _store.Save();
         _form.Hide();
     }
 
@@ -1009,7 +1007,7 @@ internal sealed class WidgetApp : ApplicationContext
     private void ToggleFullscreenHide()
     {
         _config.HideInFullscreen = !_config.HideInFullscreen;
-        JsonIo.Save(AppPaths.ConfigFile, _config);
+        _store.Save();
         _fullscreenSuppressed = false;
         AppPaths.Log(_config.HideInFullscreen ? "全屏时隐藏：开" : "全屏时隐藏：关");
 
@@ -1026,7 +1024,7 @@ internal sealed class WidgetApp : ApplicationContext
 
         _config.X = _form.Left;
         _config.Y = _form.Top;
-        JsonIo.Save(AppPaths.ConfigFile, _config);
+        _store.Save();
     }
 
     private void SaveDock()
@@ -1038,7 +1036,7 @@ internal sealed class WidgetApp : ApplicationContext
             _config.Y = _form.Top;
         }
 
-        JsonIo.Save(AppPaths.ConfigFile, _config);
+        _store.Save();
     }
 
     private void PlaceWindow()
@@ -1091,37 +1089,37 @@ internal sealed class WidgetApp : ApplicationContext
     {
         switch (command)
         {
-            case "open":
+            case MenuCommand.Open:
                 OpenWebUi();
                 break;
-            case "start":
+            case MenuCommand.Start:
                 StartDsh();
                 break;
-            case "stop":
+            case MenuCommand.Stop:
                 _ = StopDshAsync();
                 break;
-            case "restart":
+            case MenuCommand.Restart:
                 _ = RestartAsync();
                 break;
-            case "layout:bottom":
+            case MenuCommand.LayoutBottom:
                 SetZOrder(bottom: true, top: false);
                 break;
-            case "layout:top":
+            case MenuCommand.LayoutTop:
                 SetZOrder(bottom: false, top: true);
                 break;
-            case "layout:normal":
+            case MenuCommand.LayoutNormal:
                 SetZOrder(bottom: false, top: false);
                 break;
-            case "lock":
+            case MenuCommand.Lock:
                 ToggleLock();
                 break;
-            case "edge":
+            case MenuCommand.Edge:
                 ToggleEdgeHide();
                 break;
-            case "fullscreen":
+            case MenuCommand.Fullscreen:
                 ToggleFullscreenHide();
                 break;
-            case "shell":
+            case MenuCommand.Shell:
                 _config.ShellClose = _config.ShellClose == ShellCloseMode.Hide
                     ? ShellCloseMode.Close
                     : ShellCloseMode.Hide;
@@ -1130,27 +1128,27 @@ internal sealed class WidgetApp : ApplicationContext
                     shell.CloseMode = _config.ShellClose;
                 }
 
-                JsonIo.Save(AppPaths.ConfigFile, _config);
+                _store.Save();
                 break;
-            case "autostart:Disabled":
+            case MenuCommand.AutoStartDisabled:
                 AutoStart.SetMode(AutoStartMode.Disabled);
                 break;
-            case "autostart:Enabled":
+            case MenuCommand.AutoStartEnabled:
                 AutoStart.SetMode(AutoStartMode.Enabled);
                 break;
-            case "autostart:FullAuto":
+            case MenuCommand.AutoStartFull:
                 AutoStart.SetMode(AutoStartMode.FullAuto);
                 break;
-            case "theme:System":
+            case MenuCommand.ThemeSystem:
                 ApplyTheme(AppTheme.System);
                 break;
-            case "theme:Light":
+            case MenuCommand.ThemeLight:
                 ApplyTheme(AppTheme.Light);
                 break;
-            case "theme:Dark":
+            case MenuCommand.ThemeDark:
                 ApplyTheme(AppTheme.Dark);
                 break;
-            case "eye":
+            case MenuCommand.Eye:
                 // 菜单行文案与这里的判断必须同口径：全屏自动隐藏期间也算「不可见」，
                 // 点了就是唤出（并压制本次全屏的自动隐藏），不能再走 HideWidget。
                 if (_config.Visible && !_fullscreenHidden)
@@ -1163,13 +1161,13 @@ internal sealed class WidgetApp : ApplicationContext
                 }
 
                 break;
-            case "copy":
+            case MenuCommand.Copy:
                 CopyUrl();
                 break;
-            case "logs":
+            case MenuCommand.Logs:
                 OpenLogFolder();
                 break;
-            case "exit":
+            case MenuCommand.Exit:
                 RequestExit();
                 break;
         }
@@ -1183,7 +1181,7 @@ internal sealed class WidgetApp : ApplicationContext
         }
 
         _config.Theme = mode;
-        JsonIo.Save(AppPaths.ConfigFile, _config);
+        _store.Save();
         Fluent.SetMode(mode); // 触发 Changed，由 OnThemeChanged 统一重绘
     }
 
@@ -1215,7 +1213,7 @@ internal sealed class WidgetApp : ApplicationContext
     {
         _config.AlwaysBottom = bottom;
         _config.AlwaysOnTop = top;
-        JsonIo.Save(AppPaths.ConfigFile, _config);
+        _store.Save();
         _form.ApplyZOrderMode(_config);
     }
 

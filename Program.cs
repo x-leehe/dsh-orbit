@@ -45,12 +45,12 @@ internal static class Program
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
         Application.ThreadException += (_, e) => AppPaths.Log($"未处理异常：{e.Exception}");
 
-        var config = JsonIo.Load(AppPaths.ConfigFile, () => new WidgetConfig());
-        ApplyOverrides(config, args);
+        var store = ConfigStore.Load();
+        ApplyOverrides(store.Config, args);
 
         try
         {
-            using var context = new WidgetApp(config);
+            using var context = new WidgetApp(store);
             Application.Run(context);
         }
         catch (Exception ex)

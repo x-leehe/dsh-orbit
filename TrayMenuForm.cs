@@ -205,21 +205,33 @@ internal sealed class TrayMenuForm : Form
         DrawSegmented(
             g,
             Plan.LayoutSegments,
-            [("layout:bottom", "置底"), ("layout:top", "置顶"), ("layout:normal", "普通")],
+            [
+                (MenuCommand.LayoutBottom, "置底"),
+                (MenuCommand.LayoutTop, "置顶"),
+                (MenuCommand.LayoutNormal, "普通"),
+            ],
             _state.LayoutBottom ? 0 : _state.LayoutTop ? 1 : 2);
 
         Fluent.SectionLabel(g, Scale(Plan.AutoStartLabel), "开机启动", _scale);
         DrawSegmented(
             g,
             Plan.AutoStartSegments,
-            [("autostart:Disabled", "停用"), ("autostart:Enabled", "启用"), ("autostart:FullAuto", "全自动")],
+            [
+                (MenuCommand.AutoStartDisabled, "停用"),
+                (MenuCommand.AutoStartEnabled, "启用"),
+                (MenuCommand.AutoStartFull, "全自动"),
+            ],
             (int)_state.AutoStart);
 
         Fluent.SectionLabel(g, Scale(Plan.ThemeLabel), "外观", _scale);
         DrawSegmented(
             g,
             Plan.ThemeSegments,
-            [("theme:System", "跟随系统"), ("theme:Light", "浅色"), ("theme:Dark", "深色")],
+            [
+                (MenuCommand.ThemeSystem, "跟随系统"),
+                (MenuCommand.ThemeLight, "浅色"),
+                (MenuCommand.ThemeDark, "深色"),
+            ],
             (int)Fluent.Mode);
 
         Fluent.Divider(g, Flat(Plan.Divider2));
@@ -313,17 +325,17 @@ internal sealed class TrayMenuForm : Form
         {
             return
             [
-                new ActionButton("open", "打开", "external", SurfaceRole.Accent, _state.HasUrl),
-                new ActionButton("stop", "停止", "square", SurfaceRole.Standard, true),
-                new ActionButton("restart", "重启", "refresh", SurfaceRole.Standard, true),
+                new ActionButton(MenuCommand.Open, "打开", "external", SurfaceRole.Accent, _state.HasUrl),
+                new ActionButton(MenuCommand.Stop, "停止", "square", SurfaceRole.Standard, true),
+                new ActionButton(MenuCommand.Restart, "重启", "refresh", SurfaceRole.Standard, true),
             ];
         }
 
         return
         [
-            new ActionButton("start", _state.Starting ? "启动中" : "启动", "play", SurfaceRole.Accent, !_state.Starting),
-            new ActionButton("open", "打开", "external", SurfaceRole.Standard, _state.HasUrl),
-            new ActionButton("restart", "重启", "refresh", SurfaceRole.Standard, false),
+            new ActionButton(MenuCommand.Start, _state.Starting ? "启动中" : "启动", "play", SurfaceRole.Accent, !_state.Starting),
+            new ActionButton(MenuCommand.Open, "打开", "external", SurfaceRole.Standard, _state.HasUrl),
+            new ActionButton(MenuCommand.Restart, "重启", "refresh", SurfaceRole.Standard, false),
         ];
     }
 
@@ -361,7 +373,7 @@ internal sealed class TrayMenuForm : Form
         var startX = rect.X + MathF.Max(0f, (rect.Width - total) / 2f);
         var icon = new RectangleF(startX, rect.Y + ((rect.Height - iconSize) / 2f), iconSize, iconSize);
 
-        Icons.Draw(g, button.Icon, icon, foreground, 2f, fill: button.Id == "stop");
+        Icons.Draw(g, button.Icon, icon, foreground, 2f, fill: button.Id == MenuCommand.Stop);
         Fluent.Text(
             g,
             button.Label,
@@ -547,26 +559,26 @@ internal sealed class TrayMenuForm : Form
 
     private RowData RowAt(int index) => index switch
     {
-        0 => new RowData("lock", "lock", "锁定穿透", _state.Locked ? "开" : "关", null, true),
-        1 => new RowData("edge", "panel-left", "贴边隐藏", _state.EdgeHideEnabled ? "开" : "关", null, true),
+        0 => new RowData(MenuCommand.Lock, "lock", "锁定穿透", _state.Locked ? "开" : "关", null, true),
+        1 => new RowData(MenuCommand.Edge, "panel-left", "贴边隐藏", _state.EdgeHideEnabled ? "开" : "关", null, true),
         2 => new RowData(
-            "fullscreen",
+            MenuCommand.Fullscreen,
             "app-window",
             "全屏时隐藏",
             _state.HideInFullscreen ? "开" : "关",
             null,
             true),
-        3 => new RowData("shell", "monitor", "外壳关闭时", _state.ShellHide ? "隐藏" : "关闭", null, true),
-        4 => new RowData("eye", "eye", _state.Visible ? "隐藏挂件" : "显示挂件", null, null, true),
+        3 => new RowData(MenuCommand.Shell, "monitor", "外壳关闭时", _state.ShellHide ? "隐藏" : "关闭", null, true),
+        4 => new RowData(MenuCommand.Eye, "eye", _state.Visible ? "隐藏挂件" : "显示挂件", null, null, true),
         5 => new RowData(
-            "copy",
+            MenuCommand.Copy,
             "copy",
             AuthLinks.HasAuthenticatedLink ? "复制登录地址" : "复制地址",
             null,
             null,
             _state.HasUrl),
-        6 => new RowData("logs", "file-text", "打开日志", null, null, true),
-        7 => new RowData("exit", "power", "退出", null, Fluent.Critical, true),
+        6 => new RowData(MenuCommand.Logs, "file-text", "打开日志", null, null, true),
+        7 => new RowData(MenuCommand.Exit, "power", "退出", null, Fluent.Critical, true),
         _ => throw new ArgumentOutOfRangeException(nameof(index)),
     };
 

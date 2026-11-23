@@ -68,6 +68,9 @@ internal sealed class StatusSnapshot
 /// <summary>挂件配置，保存在 %LOCALAPPDATA%\DSH-Orbit\config.json。</summary>
 internal sealed class WidgetConfig
 {
+    /// <summary>配置结构版本（迁移用）；旧配置缺这一项时按当前版本处理。</summary>
+    public int SchemaVersion { get; set; } = ConfigStore.CurrentSchema;
+
     public int X { get; set; } = -1;
     public int Y { get; set; } = -1;
 
