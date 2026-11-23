@@ -11,9 +11,9 @@
     <Product>DSH-Orbit</Product>
     <AssemblyTitle>DSH-Orbit</AssemblyTitle>
     <!-- 版本：安装器与「应用和功能」里的 DisplayVersion 都从这里读；补丁发版带 -bugfix 后缀 -->
-    <Version>0.2.2-bugfix</Version>
-    <FileVersion>0.2.2.0</FileVersion>
-    <InformationalVersion>0.2.2-bugfix</InformationalVersion>
+    <Version>0.3.0</Version>
+    <FileVersion>0.3.0.0</FileVersion>
+    <InformationalVersion>0.3.0</InformationalVersion>
     <Company>DSH-Orbit</Company>
     <RootNamespace>DshOrbit</RootNamespace>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
