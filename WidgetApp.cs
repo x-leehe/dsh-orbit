@@ -582,7 +582,7 @@ internal sealed class WidgetApp : ApplicationContext
 
         if (snapshot.Balance is { } balance)
         {
-            text += $" · ¥{balance:0.00}";
+            text += $" · {Money.Cny(balance)}";
         }
 
         _tray.Text = text.Length > 63 ? text[..63] : text;

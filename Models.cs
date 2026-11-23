@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -160,6 +161,22 @@ internal sealed class UsageRecord
     public decimal TopUp { get; set; }
     public decimal LastBalance { get; set; }
     public bool HasLastBalance { get; set; }
+}
+
+/// <summary>
+/// 人民币金额显示：余额与「今日已用」共用同一套格式。
+///
+/// 依据 DeepSeek 官方计价（2026 版，价目以「每百万 tokens 几元」为单位）：单次请求的真实花费远小于 1 分；
+/// 但 <c>/user/balance</c> 返回的余额只到分，而「今日已用」是按余额差累计出来的，
+/// 量化步长本来就是 0.01。所以 ≥ 1 分一律两位小数（与官方余额、平台页面一致），
+/// 只有不足 1 分时才展开到最多 8 位，既不会把真实用量显示成 ¥0.00，也不会出现 ¥7.6200 这种尾零。
+/// </summary>
+internal static class Money
+{
+    public static string Cny(decimal value) =>
+        Math.Abs(value) >= 0.01m
+            ? "¥" + value.ToString("0.00", CultureInfo.InvariantCulture)
+            : "¥" + value.ToString("0.00######", CultureInfo.InvariantCulture);
 }
 
 /// <summary>冷启动计时（从 Main 进入算起）。</summary>

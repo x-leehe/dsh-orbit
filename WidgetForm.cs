@@ -1550,10 +1550,10 @@ internal sealed class WidgetForm : Form
             "运行时长", _status.Uptime is { } up ? FormatUptime(up) : "—",
             _status.Uptime is null ? Fluent.TextTertiary : Fluent.TextPrimary);
         DrawMetric(g, left + column + W(ColumnGap), row1, column, statsAlpha,
-            "余额", _status.Balance is { } balance ? $"¥{balance:0.00}" : "—",
+            "余额", _status.Balance is { } balance ? Money.Cny(balance) : "—",
             _status.Balance is null ? Fluent.TextTertiary : Fluent.TextPrimary);
         DrawMetric(g, left, row2, column, statsAlpha,
-            "今日已用", _status.SpentToday is { } spent ? $"¥{spent:0.0000}" : "¥0.0000",
+            "今日已用", _status.SpentToday is { } spent ? Money.Cny(spent) : "¥0.00",
             Fluent.TextPrimary);
         DrawMetric(g, left + column + W(ColumnGap), row2, column, statsAlpha, "峰谷", peak.Text, peak.Color);
 
