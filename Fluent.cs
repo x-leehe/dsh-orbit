@@ -106,6 +106,9 @@ internal static class Fluent
     public static Color AccentText { get; private set; } = Color.FromArgb(0x6C, 0xD0, 0xFF);
     public static Color OnAccent { get; private set; } = Color.FromArgb(0, 0, 0);
 
+    /// <summary>开关滑块：两种主题下都保持近白——落在强调色轨道上才像 WinUI 的 ToggleSwitch。</summary>
+    public static Color SwitchKnob => Color.FromArgb(0xFF, 0xFF, 0xFF);
+
     public static Color Success { get; private set; } = Color.FromArgb(0x6C, 0xCB, 0x5F);
     public static Color Caution { get; private set; } = Color.FromArgb(0xFC, 0xE1, 0x00);
     public static Color Critical { get; private set; } = Color.FromArgb(0xFF, 0x99, 0xA4);

@@ -106,6 +106,7 @@ internal sealed class SettingsForm : Form
 
     private void BuildControls()
     {
+        _theme.Label = "主题";
         _theme.Labels = ["跟随系统", "浅色", "深色"];
 
         _opacity.Label = "不透明度";
@@ -113,6 +114,7 @@ internal sealed class SettingsForm : Form
         _opacity.Maximum = SettingsModel.MaxOpacity;
         _opacity.Step = 0.05;
 
+        _layout.Label = "位置";
         _layout.Labels = ["置底", "置顶", "普通"];
 
         _edge.Label = "贴边隐藏";
@@ -127,6 +129,7 @@ internal sealed class SettingsForm : Form
         _visible.Label = "显示挂件";
         _visible.Description = "关掉后只能从托盘唤出";
 
+        _autoStart.Label = "开机启动";
         _autoStart.Labels = ["停用", "启用", "全自动"];
 
         _launchArgs.Label = "启动参数";
@@ -151,6 +154,7 @@ internal sealed class SettingsForm : Form
         _useShell.Label = "用内置外壳打开";
         _useShell.Description = "关掉后点地址会用默认浏览器打开";
 
+        _shellClose.Label = "外壳关闭时";
         _shellClose.Labels = ["隐藏", "关闭"];
 
         _showBalance.Label = "显示余额";
@@ -341,8 +345,7 @@ internal sealed class SettingsForm : Form
 
     private int S(float value) => (int)MathF.Round(value * DpiScale);
 
-    private Rectangle InContent(int y, int height) =>
-        new(S(ContentX), S(y), S(ContentWidth), S(height));
+    private float Sf(float value) => value * DpiScale;
 
     protected override CreateParams CreateParams
     {
@@ -386,35 +389,36 @@ internal sealed class SettingsForm : Form
 
     private void LayoutControls()
     {
-        // 分区内容（同一套坐标，切分区时只改可见性）。
-        // 每组顶部留 20px 给「主题 / 位置 / 开机启动 / 外壳关闭时」这类 12px 小标题。
-        _theme.Bounds = InContent(152, 32);
-        _opacity.Bounds = InContent(204, 40);
+        // 卡片内边距 16；行高固定：开关 / 分段 / 滑杆 64，文本字段 76。
+        // 坐标全部是「设计像素」，由 InCard 统一乘 DPI。
+        _theme.Bounds = InCard(128, 64);
+        _opacity.Bounds = InCard(192, 64);
 
-        _layout.Bounds = InContent(152, 32);
-        _edge.Bounds = InContent(200, 52);
-        _clickThrough.Bounds = InContent(256, 52);
-        _hideFullscreen.Bounds = InContent(312, 52);
-        _visible.Bounds = InContent(368, 52);
+        _layout.Bounds = InCard(128, 64);
+        _edge.Bounds = InCard(192, 64);
+        _clickThrough.Bounds = InCard(256, 64);
+        _hideFullscreen.Bounds = InCard(320, 64);
+        _visible.Bounds = InCard(384, 64);
 
-        _autoStart.Bounds = InContent(152, 32);
-        _launchArgs.Bounds = InContent(204, 56);
-        _workDir.Bounds = InContent(268, 56);
+        _autoStart.Bounds = InCard(128, 64);
+        _launchArgs.Bounds = InCard(192, 76);
+        _workDir.Bounds = InCard(268, 76);
 
-        _profile.Bounds = InContent(136, 56);
-        _port.Bounds = InContent(200, 56);
-        _dshPath.Bounds = InContent(264, 56);
-        _useShell.Bounds = InContent(328, 52);
-        _shellClose.Bounds = InContent(408, 32);
-        _showBalance.Bounds = InContent(448, 52);
+        _profile.Bounds = InCard(128, 76);
+        _port.Bounds = InCard(204, 76);
+        _dshPath.Bounds = InCard(280, 76);
+        _useShell.Bounds = InCard(356, 64);
+        _shellClose.Bounds = InCard(420, 64);
+        _showBalance.Bounds = InCard(484, 64);
 
-        _apiKey.Bounds = InContent(136, 56);
-        var intervalWidth = (ContentWidth - 16) / 3;
-        _statusInterval.Bounds = new Rectangle(S(ContentX), S(232), S(intervalWidth), S(56));
-        _balanceInterval.Bounds = new Rectangle(S(ContentX + intervalWidth + 8), S(232), S(intervalWidth), S(56));
-        _pluginInterval.Bounds = new Rectangle(S(ContentX + ((intervalWidth + 8) * 2)), S(232), S(intervalWidth), S(56));
-        _copy.Bounds = new Rectangle(S(ContentX), S(304), S(96), S(32));
-        _logs.Bounds = new Rectangle(S(ContentX + 104), S(304), S(96), S(32));
+        _apiKey.Bounds = InCard(128, 76);
+
+        var intervalWidth = (ContentWidth - 32 - 16) / 3;
+        _statusInterval.Bounds = new Rectangle(S(ContentX + 16), S(232), S(intervalWidth), S(76));
+        _balanceInterval.Bounds = new Rectangle(S(ContentX + 16 + intervalWidth + 8), S(232), S(intervalWidth), S(76));
+        _pluginInterval.Bounds = new Rectangle(S(ContentX + 16 + ((intervalWidth + 8) * 2)), S(232), S(intervalWidth), S(76));
+        _copy.Bounds = new Rectangle(S(ContentX + 16), S(320), S(96), S(32));
+        _logs.Bounds = new Rectangle(S(ContentX + 16 + 104), S(320), S(96), S(32));
 
         // 页脚
         var footerTop = DesignHeight - FooterHeight;
@@ -426,6 +430,10 @@ internal sealed class SettingsForm : Form
         // 标题栏关闭按钮
         _close.Bounds = new Rectangle(S(DesignWidth - 20 - 32), S(10), S(32), S(32));
     }
+
+    /// <summary>卡片内的行：内容区左右各留 16 内边距。</summary>
+    private Rectangle InCard(int y, int height) =>
+        new(S(ContentX + 16), S(y), S(ContentWidth - 32), S(height));
 
     private void ApplySectionVisibility()
     {
@@ -473,13 +481,14 @@ internal sealed class SettingsForm : Form
 
     private void DrawTitle(Graphics g, float scale)
     {
+        // WinUI Settings 的页头：28px 大标题，不是 20px 的 Subtitle。
         Fluent.Text(
             g,
             "设置",
-            TextRole.Subtitle,
+            TextRole.Title,
             true,
             Fluent.TextPrimary,
-            new RectangleF(S(20), S(10), S(DesignWidth - 120), S(TitleHeight - 20)),
+            new RectangleF(S(24), S(4), S(DesignWidth - 120), S(44)),
             StringAlignment.Near,
             StringTrimming.None,
             scale);
@@ -499,11 +508,19 @@ internal sealed class SettingsForm : Form
             var selected = i == _section;
             var hovered = i == _navHover;
 
+            // WinUI 的导航选中态是「轻微浅底 + 左侧 3px 强调条」，不是整块描边。
             if (selected)
             {
-                using var path = Fluent.Rounded(rect, Fluent.RControl);
-                Fluent.Fill(g, path, Fluent.Mix(Fluent.ControlFill, Fluent.AccentFill, 0.24f));
-                Fluent.Stroke(g, path, Fluent.Mix(Fluent.StrokeStrong, Fluent.AccentFill, 0.7f), 1f);
+                using (var path = Fluent.Rounded(rect, Fluent.RControl))
+                {
+                    Fluent.Fill(g, path, Fluent.OverState(Fluent.Mica, VisualState.Hover));
+                }
+
+                var bar = new RectangleF(rect.X + (1f * scale), rect.Y + ((rect.Height - (16f * scale)) / 2f), 3f * scale, 16f * scale);
+                using (var path = Fluent.Rounded(bar, 1.5f * scale))
+                {
+                    Fluent.Fill(g, path, Fluent.AccentText);
+                }
             }
             else if (hovered)
             {
@@ -515,14 +532,36 @@ internal sealed class SettingsForm : Form
                 g,
                 SectionInfo[i].Title,
                 TextRole.Body,
-                selected,
+                false,
                 selected ? Fluent.TextPrimary : Fluent.TextSecondary,
-                new RectangleF(rect.X + S(14), rect.Y, rect.Width - S(24), rect.Height),
+                new RectangleF(rect.X + (16f * scale), rect.Y, rect.Width - (24f * scale), rect.Height),
                 StringAlignment.Near,
                 StringTrimming.EllipsisCharacter,
                 scale);
         }
     }
+
+    /// <summary>每个分区的卡片高度（设计像素）：16 内边距 + 各行高度。</summary>
+    private static int CardHeight(int section) => section switch
+    {
+        0 => 160,   // 分段 64 + 滑杆 64
+        1 => 352,   // 分段 64 + 4×开关 64
+        2 => 248,   // 分段 64 + 2×字段 76
+        3 => 452,   // 3×字段 76 + 开关 64 + 分段 64 + 开关 64
+        4 => 256,   // 字段 76 + 来源 18 + 间隔 76 + 按钮 32 + 间距
+        _ => 160,
+    };
+
+    /// <summary>卡片内的行分隔线（设计 y）。</summary>
+    private static int[] CardDividers(int section) => section switch
+    {
+        0 => [192],
+        1 => [192, 256, 320, 384],
+        2 => [192, 268],
+        3 => [204, 280, 356, 420, 484],
+        4 => [226, 308],
+        _ => [],
+    };
 
     private void DrawSectionHeader(Graphics g, float scale)
     {
@@ -534,7 +573,7 @@ internal sealed class SettingsForm : Form
             TextRole.Subtitle,
             true,
             Fluent.TextPrimary,
-            new RectangleF(S(ContentX), S(60), S(ContentWidth), S(30)),
+            new RectangleF(S(ContentX), S(58), S(ContentWidth), S(30)),
             StringAlignment.Near,
             StringTrimming.None,
             scale);
@@ -545,26 +584,24 @@ internal sealed class SettingsForm : Form
             TextRole.Caption,
             false,
             Fluent.TextTertiary,
-            new RectangleF(S(ContentX), S(92), S(ContentWidth), S(32)),
+            new RectangleF(S(ContentX), S(90), S(ContentWidth), S(20)),
             StringAlignment.Near,
             StringTrimming.EllipsisCharacter,
             scale);
 
-        // 分段控件自己不带标签，这里补 12px 小标题（与文本字段的标签同一档）。
-        switch (_section)
+        // 设置分组 = 一张 WinUI 卡片（8 圆角、Layer 底、上亮下暗描边），行间用 inset 分隔线。
+        Fluent.Card(
+            g,
+            new RectangleF(S(ContentX), S(112), S(ContentWidth), S(CardHeight(_section))),
+            Sf(Fluent.RCard),
+            0,
+            Fluent.Layer);
+
+        foreach (var y in CardDividers(_section))
         {
-            case 0:
-                FieldLabel(g, "主题", 132, scale);
-                break;
-            case 1:
-                FieldLabel(g, "位置", 132, scale);
-                break;
-            case 2:
-                FieldLabel(g, "开机启动", 132, scale);
-                break;
-            case 3:
-                FieldLabel(g, "外壳关闭时", 384, scale);
-                break;
+            Fluent.Divider(
+                g,
+                new RectangleF(S(ContentX + 16), S(y), S(ContentWidth - 32), MathF.Max(1f, scale)));
         }
 
         // 数据分区：API Key 的来源提示 + 三个间隔的说明
@@ -576,7 +613,7 @@ internal sealed class SettingsForm : Form
                 TextRole.Caption,
                 false,
                 Fluent.TextTertiary,
-                new RectangleF(S(ContentX), S(196), S(ContentWidth), S(20)),
+                new RectangleF(S(ContentX + 16), S(206), S(ContentWidth - 32), S(18)),
                 StringAlignment.Near,
                 StringTrimming.EllipsisCharacter,
                 scale);
@@ -587,25 +624,11 @@ internal sealed class SettingsForm : Form
                 TextRole.Caption,
                 false,
                 Fluent.TextTertiary,
-                new RectangleF(S(ContentX), S(352), S(ContentWidth), S(20)),
+                new RectangleF(S(ContentX + 16), S(384), S(ContentWidth - 32), S(18)),
                 StringAlignment.Near,
                 StringTrimming.EllipsisCharacter,
                 scale);
         }
-    }
-
-    private void FieldLabel(Graphics g, string text, int y, float scale)
-    {
-        Fluent.Text(
-            g,
-            text,
-            TextRole.Caption,
-            false,
-            Fluent.TextTertiary,
-            new RectangleF(S(ContentX), S(y), S(ContentWidth), S(16)),
-            StringAlignment.Near,
-            StringTrimming.None,
-            scale);
     }
 
     private void DrawFooter(Graphics g, float scale)
@@ -618,13 +641,14 @@ internal sealed class SettingsForm : Form
 
         if (!string.IsNullOrEmpty(_error))
         {
+            // 错误提示放在页脚分隔线下方、按钮上方的细条里（DSH 分区卡片到 564，不能往上挤）。
             Fluent.Text(
                 g,
                 _error,
                 TextRole.Caption,
                 false,
                 Fluent.Critical,
-                new RectangleF(S(24), S(top - 28), S(DesignWidth - 48), S(20)),
+                new RectangleF(S(24), S(top + 2), S(DesignWidth - 48), S(16)),
                 StringAlignment.Near,
                 StringTrimming.EllipsisCharacter,
                 scale);
@@ -633,8 +657,9 @@ internal sealed class SettingsForm : Form
 
     private Rectangle NavRect(int index)
     {
-        var top = 72 + (index * (38 + 6));
-        return new Rectangle(S(20), S(top), S(NavWidth - 36), S(38));
+        // WinUI 设置导航：40 高、4 间距、左侧 12 边距。
+        var top = 64 + (index * (40 + 4));
+        return new Rectangle(S(12), S(top), S(NavWidth - 24), S(40));
     }
 
     // ---------------------------------------------------------------- 鼠标 / 键盘

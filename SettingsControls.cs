@@ -5,8 +5,8 @@ using System.Windows.Forms;
 namespace DshOrbit;
 
 /// <summary>
-/// 设置面板的开关行：左侧标签 + 说明（12 tertiary），右侧 WinUI 开关（40×20）。
-/// 整行可点、可键盘聚焦（Tab + Space/Enter），不依赖灰色小方框。
+/// 设置面板的开关行（WinUI ToggleSwitch 形态）：左侧 14px 标签 + 12px 说明，右侧 40×20 开关。
+/// 整行 64px、可键盘聚焦（Tab + Space/Enter）；滑块恒为近白，暗色主题下也是 WinUI 的观感。
 /// </summary>
 [DesignerCategory("Code")]
 internal sealed class SettingsToggle : Control
@@ -27,7 +27,7 @@ internal sealed class SettingsToggle : Control
             true);
 
         BackColor = Color.Transparent;
-        Height = 52;
+        Height = 64;
         TabStop = true;
         Cursor = Cursors.Hand;
         Fluent.Changed += OnThemeChanged;
@@ -66,7 +66,7 @@ internal sealed class SettingsToggle : Control
     {
         var width = 40f * DpiScale;
         var height = 20f * DpiScale;
-        return new RectangleF(Width - width, S(4), width, height);
+        return new RectangleF(Width - width, (Height - height) / 2f, width, height);
     }
 
     private void OnThemeChanged()
@@ -138,7 +138,7 @@ internal sealed class SettingsToggle : Control
             TextRole.Body,
             false,
             Fluent.TextPrimary,
-            new RectangleF(0, 0, textWidth, 22f * scale),
+            new RectangleF(0, 10f * scale, textWidth, 22f * scale),
             StringAlignment.Near,
             StringTrimming.EllipsisCharacter,
             scale);
@@ -151,7 +151,7 @@ internal sealed class SettingsToggle : Control
                 TextRole.Caption,
                 false,
                 Fluent.TextTertiary,
-                new RectangleF(0, 22f * scale, textWidth, 18f * scale),
+                new RectangleF(0, 30f * scale, textWidth, 18f * scale),
                 StringAlignment.Near,
                 StringTrimming.EllipsisCharacter,
                 scale);
@@ -163,19 +163,27 @@ internal sealed class SettingsToggle : Control
         {
             Fluent.Fill(g, path, _checked ? Fluent.AccentFill : Fluent.ControlFill);
             Fluent.Stroke(g, path, _checked ? Fluent.AccentFill : Fluent.StrokeStrong, 1f);
+
+            if (_hovered && !_checked)
+            {
+                var state = g.Save();
+                g.SetClip(path, System.Drawing.Drawing2D.CombineMode.Intersect);
+                Fluent.Fill(g, track, Fluent.HoverLayer);
+                g.Restore(state);
+            }
         }
 
         var knob = 14f * scale;
         var knobX = _checked ? track.Right - knob - (3f * scale) : track.Left + (3f * scale);
-        using (var brush = new SolidBrush(_checked ? Fluent.OnAccent : Fluent.TextSecondary))
+        using (var brush = new SolidBrush(_checked ? Fluent.SwitchKnob : Fluent.TextSecondary))
         {
             g.FillEllipse(brush, knobX, track.Top + ((track.Height - knob) / 2f), knob, knob);
         }
 
-        if (_hovered || _focused)
+        if (_focused)
         {
-            using var path = Fluent.Rounded(RectangleF.Inflate(track, 3f * scale, 3f * scale), radius + (3f * scale));
-            Fluent.Stroke(g, path, Fluent.WithAlpha(Fluent.AccentText, _focused ? 0.9f : 0.35f), MathF.Max(1f, scale));
+            using var ring = Fluent.Rounded(RectangleF.Inflate(track, 2f * scale, 2f * scale), radius + (2f * scale));
+            Fluent.Stroke(g, ring, Fluent.AccentText, MathF.Max(1f, 2f * scale));
         }
     }
 
@@ -190,7 +198,10 @@ internal sealed class SettingsToggle : Control
     }
 }
 
-/// <summary>设置面板的分段控件（3–4 格）：复用 Fluent.Segmented 的视觉，加悬停/键盘。</summary>
+/// <summary>
+/// 设置面板的分段选择行：左侧 14px 标签，右侧 32px 的 Fluent 分段控件（3 格 268×32）。
+/// 视觉与托盘菜单里的分段控件同源（`Fluent.Segmented`），只是把标签挪到行首，像 WinUI 的 ComboBox 行。
+/// </summary>
 [DesignerCategory("Code")]
 internal sealed class SettingsSegmented : Control
 {
@@ -209,11 +220,14 @@ internal sealed class SettingsSegmented : Control
             true);
 
         BackColor = Color.Transparent;
-        Height = 32;
+        Height = 64;
         TabStop = true;
         Cursor = Cursors.Hand;
         Fluent.Changed += OnThemeChanged;
     }
+
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public string Label { get; set; } = "";
 
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public IReadOnlyList<string> Labels { get; set; } = [];
@@ -240,6 +254,14 @@ internal sealed class SettingsSegmented : Control
 
     private float DpiScale => DeviceDpi / 96f;
 
+    private RectangleF SegRect()
+    {
+        var scale = DpiScale;
+        var width = (Labels.Count <= 2 ? 200f : 268f) * scale;
+        width = Math.Min(width, Width * 0.8f);
+        return new RectangleF(Width - width, (Height - (32f * scale)) / 2f, width, 32f * scale);
+    }
+
     private void OnThemeChanged()
     {
         if (!IsDisposed)
@@ -250,12 +272,18 @@ internal sealed class SettingsSegmented : Control
 
     private int IndexAt(Point point)
     {
-        if (Labels.Count == 0 || Width <= 0)
+        if (Labels.Count == 0)
         {
             return -1;
         }
 
-        var index = point.X * Labels.Count / Width;
+        var rect = SegRect();
+        if (!rect.Contains(point))
+        {
+            return -1;
+        }
+
+        var index = (int)((point.X - rect.X) * Labels.Count / Math.Max(1f, rect.Width));
         return Math.Clamp(index, 0, Labels.Count - 1);
     }
 
@@ -280,7 +308,7 @@ internal sealed class SettingsSegmented : Control
     protected override void OnMouseDown(MouseEventArgs e)
     {
         base.OnMouseDown(e);
-        if (e.Button != MouseButtons.Left)
+        if (e.Button != MouseButtons.Left || IndexAt(e.Location) < 0)
         {
             return;
         }
@@ -312,16 +340,27 @@ internal sealed class SettingsSegmented : Control
         var g = e.Graphics;
         Fluent.AntiAlias(g, crisp: true);
         var scale = DpiScale;
-        var focused = Focused;
-        var hover = _hover;
+        var rect = SegRect();
 
-        var rect = new RectangleF(0.5f, 0.5f, Width - 1, Height - 1);
-        Fluent.Segmented(g, rect, Labels, _selected, hover, scale);
+        var labelWidth = Math.Max(0f, rect.X - (12f * scale));
+        Fluent.Text(
+            g,
+            Label,
+            TextRole.Body,
+            false,
+            Fluent.TextPrimary,
+            new RectangleF(0, 0, labelWidth, Height),
+            StringAlignment.Near,
+            StringTrimming.EllipsisCharacter,
+            scale);
 
-        if (focused)
+        Fluent.Segmented(g, rect, Labels, _selected, _hover, scale);
+
+        if (Focused)
         {
-            using var path = Fluent.Rounded(RectangleF.Inflate(rect, 2f * scale, 2f * scale), Fluent.RControl + (2f * scale));
-            Fluent.Stroke(g, path, Fluent.WithAlpha(Fluent.AccentText, 0.8f), MathF.Max(1f, scale));
+            // 分段控件本身已有选中格的强调描边；这里只补一圈很淡的焦点提示，避免"双边框"。
+            using var ring = Fluent.Rounded(RectangleF.Inflate(rect, 1f * scale, 1f * scale), Fluent.RControl + (1f * scale));
+            Fluent.Stroke(g, ring, Fluent.WithAlpha(Fluent.AccentText, 0.5f), MathF.Max(1f, scale));
         }
     }
 
@@ -337,7 +376,7 @@ internal sealed class SettingsSegmented : Control
 }
 
 /// <summary>
-/// 设置面板的数值滑杆（不透明度）：左侧标签、中间轨道、右侧百分比。
+/// 设置面板的滑杆行：左侧 14px 标签、中间 4px 轨道 + 20px 滑块、右侧 12px 百分比；整行 64px。
 /// 拖动 / 点轨道 / 左右键都能改，步进 0.05。
 /// </summary>
 [DesignerCategory("Code")]
@@ -358,7 +397,7 @@ internal sealed class SettingsSlider : Control
             true);
 
         BackColor = Color.Transparent;
-        Height = 40;
+        Height = 64;
         TabStop = true;
         Cursor = Cursors.Hand;
         Fluent.Changed += OnThemeChanged;
@@ -400,12 +439,10 @@ internal sealed class SettingsSlider : Control
 
     private float DpiScale => DeviceDpi / 96f;
 
-    private int S(float value) => (int)MathF.Round(value * DpiScale);
-
     private RectangleF TrackRect()
     {
-        var left = 116f * DpiScale;
-        var right = Width - (66f * DpiScale);
+        var left = 120f * DpiScale;
+        var right = Width - (60f * DpiScale);
         var height = Math.Max(4f, 4f * DpiScale);
         return new RectangleF(left, (Height - height) / 2f, Math.Max(24f, right - left), height);
     }
@@ -510,9 +547,11 @@ internal sealed class SettingsSlider : Control
             Fluent.Fill(g, path, Fluent.AccentFill);
         }
 
-        var thumb = 16f * scale;
-        var thumbX = track.X + (track.Width * ratio) - (thumb / 2f);
-        thumbX = Math.Clamp(thumbX, track.X - (thumb / 2f), track.Right - (thumb / 2f));
+        var thumb = 20f * scale;
+        var thumbX = Math.Clamp(
+            track.X + (track.Width * ratio) - (thumb / 2f),
+            track.X - (thumb / 2f),
+            track.Right - (thumb / 2f));
         using (var brush = new SolidBrush(Fluent.AccentFill))
         {
             g.FillEllipse(brush, thumbX, (Height - thumb) / 2f, thumb, thumb);
@@ -524,15 +563,17 @@ internal sealed class SettingsSlider : Control
             TextRole.Caption,
             false,
             Fluent.TextSecondary,
-            new RectangleF(Width - (60f * scale), 0, 60f * scale, Height),
+            new RectangleF(Width - (56f * scale), 0, 56f * scale, Height),
             StringAlignment.Far,
             StringTrimming.None,
             scale);
 
         if (Focused)
         {
-            using var path = Fluent.Rounded(RectangleF.Inflate(track, 8f * scale, 10f * scale), Fluent.RControl);
-            Fluent.Stroke(g, path, Fluent.WithAlpha(Fluent.AccentText, 0.7f), MathF.Max(1f, scale));
+            using var ring = Fluent.Rounded(
+                RectangleF.Inflate(track, 8f * scale, 12f * scale),
+                Fluent.RControl);
+            Fluent.Stroke(g, ring, Fluent.AccentText, MathF.Max(1f, 2f * scale));
         }
     }
 
@@ -548,7 +589,7 @@ internal sealed class SettingsSlider : Control
 }
 
 /// <summary>
-/// 设置面板的文本字段：12 tertiary 标签 + 32px 输入框（可选「浏览…」按钮）。
+/// 设置面板的文本字段行：12px 标签 + 32px 输入框（可选「浏览…」按钮），整行 76px。
 /// 输入/选区/输入法交给内部的 <see cref="FluentTextBox"/>，这里只负责排版与标签。
 /// </summary>
 [DesignerCategory("Code")]
@@ -568,7 +609,7 @@ internal sealed class SettingsField : Control
             true);
 
         BackColor = Color.Transparent;
-        Height = 56;
+        Height = 76;
 
         _browse.Visible = false;
         _browse.Click += (_, _) => BrowseRequested?.Invoke(this, EventArgs.Empty);
@@ -639,7 +680,7 @@ internal sealed class SettingsField : Control
 
     private void LayoutChildren()
     {
-        var top = S(20);
+        var top = S(26);
         var buttonWidth = _browse.Visible ? S(76) : 0;
         var gap = _browse.Visible ? S(8) : 0;
         var inputWidth = Math.Max(0, Width - buttonWidth - gap);
@@ -662,10 +703,9 @@ internal sealed class SettingsField : Control
             TextRole.Caption,
             false,
             Fluent.TextTertiary,
-            new RectangleF(0, 0, Width, S(18)),
+            new RectangleF(0, 2f * DpiScale, Width, S(18)),
             StringAlignment.Near,
             StringTrimming.EllipsisCharacter,
             DpiScale);
     }
 }
-
