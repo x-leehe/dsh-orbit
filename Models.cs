@@ -35,7 +35,7 @@ internal sealed class StatusSnapshot
 
     /// <summary>
     /// 距离下一次计价时段切换的时长：闲时中 = 闲时剩余，标准价 = 距闲时开始。
-    /// 由本地时钟推导（北京 00:30–08:30 闲时），拿不到时为 null。
+    /// 由本地时钟 + 法定节假日年表推导（工作日 9–12 / 14–18 为高峰），拿不到时为 null。
     /// </summary>
     public TimeSpan? UntilPriceSwitch { get; init; }
 
@@ -241,6 +241,10 @@ internal static class AppPaths
 
     public static string ConfigFile => Path.Combine(Root, "config.json");
     public static string UsageFile => Path.Combine(Root, "usage.json");
+
+    /// <summary>中国法定节假日年表缓存（由 ChinaHolidays 维护，失败不影响判定）。</summary>
+    public static string HolidaysFile => Path.Combine(Root, "holidays.json");
+
     public static string LogFile => Path.Combine(Root, "widget.log");
 
     public static void Ensure()

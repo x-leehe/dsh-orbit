@@ -1851,9 +1851,10 @@ internal sealed class WidgetForm : Form
 
     /// <summary>
     /// 峰谷倒计时：标准价「距闲时 h:mm」，闲时「闲时余 h:mm」。
-    /// 两侧都压到 5 个字符宽，132px 的格子里标签 + 数值仍留 20px 余量，且与左侧「距闲时」对称；
-    /// 「闲时 h:mm 后结束」会只剩 4px 余量（实测见 preview-stopped-*.png），「闲时 h:mm 结束」
-    /// 又容易被读成钟点，所以改「余」。
+    /// 按官方 2026 规则，高峰只有工作日 9–12 / 14–18，所以标准价倒计时最长 3 小时（`3:00`，5 个字符宽）；
+    /// 闲时则覆盖周末与法定节假日，倒计时会跨周末甚至整段长假，小时数可以到三位数
+    /// （`闲时余 400:00` 是上界）。因此两侧宽度不再对称，按「标签 + 动态宽度数值」排版：
+    /// 数值右对齐到格子右缘，超宽时由 `StringTrimming.EllipsisCharacter` 兜底。
     /// </summary>
     private (string Text, Color Color) PeakCell()
     {

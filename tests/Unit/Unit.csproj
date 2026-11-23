@@ -33,6 +33,7 @@
     <Compile Include="..\..\Icons.cs" />
     <Compile Include="..\..\Fluent.cs" />
     <Compile Include="..\..\Models.cs" />
+    <Compile Include="..\..\ChinaHolidays.cs" />
     <Compile Include="..\..\Balance.cs" />
     <Compile Include="..\..\SessionProbe.cs" />
     <Compile Include="..\..\DshSession.cs" />

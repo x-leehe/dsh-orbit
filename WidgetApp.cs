@@ -21,6 +21,9 @@ internal sealed class WidgetApp : ApplicationContext
     private readonly System.Windows.Forms.Timer _saveTimer = new() { Interval = 600 };
     private readonly System.Windows.Forms.Timer _warmupTimer = new() { Interval = 1200 };
 
+    /// <summary>法定节假日年表：30 分钟看一次（<see cref="ChinaHolidays.EnsureAsync"/> 自带 20h/30min 节流）。</summary>
+    private readonly System.Windows.Forms.Timer _holidayTimer = new() { Interval = 30 * 60 * 1000 };
+
     private readonly CancellationTokenSource _cts = new();
     private readonly SemaphoreSlim _probeGate = new(1, 1);
     private readonly SemaphoreSlim _pluginGate = new(1, 1);
@@ -186,6 +189,12 @@ internal sealed class WidgetApp : ApplicationContext
             }
         };
         _warmupTimer.Start();
+
+        // 法定节假日年表：启动先后台拉一次，之后交给 30 分钟定时器（内部再节流成「成功 20h / 失败 30min」）。
+        // 故意不挂在 RefreshBalanceAsync 里：ShowBalance=false 时那条会早退，但峰谷判定仍然要显示。
+        _ = ChinaHolidays.EnsureAsync(_cts.Token);
+        _holidayTimer.Tick += (_, _) => _ = ChinaHolidays.EnsureAsync(_cts.Token);
+        _holidayTimer.Start();
 
         AutoStart.MigrateIfNeeded();
 
@@ -1306,6 +1315,7 @@ internal sealed class WidgetApp : ApplicationContext
             _balanceTimer.Dispose();
             _saveTimer.Dispose();
             _warmupTimer.Dispose();
+            _holidayTimer.Dispose();
             _balance.Dispose();
             _host.Dispose();
             _tray.Visible = false;
