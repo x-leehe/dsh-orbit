@@ -161,15 +161,22 @@ internal sealed class SettingsToggle : Control
         var radius = track.Height / 2f;
         using (var path = Fluent.Rounded(track, radius))
         {
-            Fluent.Fill(g, path, _checked ? Fluent.AccentFill : Fluent.ControlFill);
-            Fluent.Stroke(g, path, _checked ? Fluent.AccentFill : Fluent.StrokeStrong, 1f);
-
-            if (_hovered && !_checked)
+            // WinUI 的关态是「透明轨道 + 1px 描边」，不是整块灰色填充。
+            if (_checked)
             {
-                var state = g.Save();
-                g.SetClip(path, System.Drawing.Drawing2D.CombineMode.Intersect);
-                Fluent.Fill(g, track, Fluent.HoverLayer);
-                g.Restore(state);
+                Fluent.Fill(g, path, Fluent.AccentFill);
+                Fluent.Stroke(g, path, Fluent.AccentFill, 1f);
+            }
+            else
+            {
+                Fluent.Stroke(g, path, Fluent.StrokeStrong, 1f);
+                if (_hovered)
+                {
+                    var state = g.Save();
+                    g.SetClip(path, System.Drawing.Drawing2D.CombineMode.Intersect);
+                    Fluent.Fill(g, track, Fluent.HoverLayer);
+                    g.Restore(state);
+                }
             }
         }
 
@@ -180,10 +187,11 @@ internal sealed class SettingsToggle : Control
             g.FillEllipse(brush, knobX, track.Top + ((track.Height - knob) / 2f), knob, knob);
         }
 
-        if (_focused)
+        if (_focused && ShowFocusCues)
         {
+            // WinUI 焦点框：2px 前景色（暗色主题下是白，浅色主题下是黑），不用强调色。
             using var ring = Fluent.Rounded(RectangleF.Inflate(track, 2f * scale, 2f * scale), radius + (2f * scale));
-            Fluent.Stroke(g, ring, Fluent.AccentText, MathF.Max(1f, 2f * scale));
+            Fluent.Stroke(g, ring, Fluent.TextPrimary, MathF.Max(1f, 2f * scale));
         }
     }
 
@@ -356,11 +364,11 @@ internal sealed class SettingsSegmented : Control
 
         Fluent.Segmented(g, rect, Labels, _selected, _hover, scale);
 
-        if (Focused)
+        if (Focused && ShowFocusCues)
         {
-            // 分段控件本身已有选中格的强调描边；这里只补一圈很淡的焦点提示，避免"双边框"。
-            using var ring = Fluent.Rounded(RectangleF.Inflate(rect, 1f * scale, 1f * scale), Fluent.RControl + (1f * scale));
-            Fluent.Stroke(g, ring, Fluent.WithAlpha(Fluent.AccentText, 0.5f), MathF.Max(1f, scale));
+            // WinUI 焦点框：2px 前景色；放在分段控件外侧 2px，避开选中格的强调描边。
+            using var ring = Fluent.Rounded(RectangleF.Inflate(rect, 2f * scale, 2f * scale), Fluent.RControl + (2f * scale));
+            Fluent.Stroke(g, ring, Fluent.TextPrimary, MathF.Max(1f, 2f * scale));
         }
     }
 
@@ -568,12 +576,13 @@ internal sealed class SettingsSlider : Control
             StringTrimming.None,
             scale);
 
-        if (Focused)
+        if (Focused && ShowFocusCues)
         {
+            // WinUI 焦点框：2px 前景色（暗色主题下是白，浅色主题下是黑）。
             using var ring = Fluent.Rounded(
                 RectangleF.Inflate(track, 8f * scale, 12f * scale),
                 Fluent.RControl);
-            Fluent.Stroke(g, ring, Fluent.AccentText, MathF.Max(1f, 2f * scale));
+            Fluent.Stroke(g, ring, Fluent.TextPrimary, MathF.Max(1f, 2f * scale));
         }
     }
 
@@ -646,29 +655,59 @@ internal sealed class SettingsField : Control
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public bool ShowBrowse
     {
-        get => _browse.Visible;
+        // 注意：不能用 _browse.Visible 当状态——父窗口还没显示时它恒为 false，
+        // 会让排版把「浏览…」按钮的宽度算成 0（按钮被输入框盖住）。
+        get => _showBrowse;
         set
         {
-            if (_browse.Visible == value)
+            if (_showBrowse == value)
             {
                 return;
             }
 
+            _showBrowse = value;
             _browse.Visible = value;
             LayoutChildren();
         }
     }
+
+    private bool _showBrowse;
 
     public event EventHandler? BrowseRequested;
 
     /// <summary>输入内容变化（转给设置面板做脏检查）。</summary>
     public event EventHandler? ValueChanged;
 
+    /// <summary>
+    /// true = WinUI 卡片行样式：标签在左、输入框在右（64 高）；
+    /// false = 标签在上、输入框在下（76 高，数据分区的三列间隔用这个）。
+    /// </summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool InlineLabel
+    {
+        get => _inlineLabel;
+        set
+        {
+            if (_inlineLabel == value)
+            {
+                return;
+            }
+
+            _inlineLabel = value;
+            LayoutChildren();
+            Invalidate();
+        }
+    }
+
+    private bool _inlineLabel;
+
     public void FocusInput() => _input.FocusInput();
 
     private float DpiScale => DeviceDpi / 96f;
 
     private int S(float value) => (int)MathF.Round(value * DpiScale);
+
+    private int LabelWidth => _inlineLabel ? S(140) : 0;
 
     protected override void OnResize(EventArgs e)
     {
@@ -684,13 +723,14 @@ internal sealed class SettingsField : Control
 
     private void LayoutChildren()
     {
-        var top = S(26);
-        var buttonWidth = _browse.Visible ? S(76) : 0;
-        var gap = _browse.Visible ? S(8) : 0;
-        var inputWidth = Math.Max(0, Width - buttonWidth - gap);
+        var top = _inlineLabel ? (Height - S(32)) / 2 : S(26);
+        var left = LabelWidth;
+        var buttonWidth = _showBrowse ? S(76) : 0;
+        var gap = _showBrowse ? S(8) : 0;
+        var inputWidth = Math.Max(0, Width - left - buttonWidth - gap);
 
-        _input.Bounds = new Rectangle(0, top, inputWidth, S(32));
-        if (_browse.Visible)
+        _input.Bounds = new Rectangle(left, top, inputWidth, S(32));
+        if (_showBrowse)
         {
             _browse.Bounds = new Rectangle(Width - buttonWidth, top, buttonWidth, S(32));
         }
@@ -700,6 +740,23 @@ internal sealed class SettingsField : Control
     {
         var g = e.Graphics;
         Fluent.AntiAlias(g, crisp: true);
+        var scale = DpiScale;
+
+        if (_inlineLabel)
+        {
+            // WinUI 卡片行：标签 14 主色、垂直居中。
+            Fluent.Text(
+                g,
+                Label,
+                TextRole.Body,
+                false,
+                Fluent.TextPrimary,
+                new RectangleF(0, 0, LabelWidth - S(12), Height),
+                StringAlignment.Near,
+                StringTrimming.EllipsisCharacter,
+                scale);
+            return;
+        }
 
         Fluent.Text(
             g,
@@ -707,9 +764,9 @@ internal sealed class SettingsField : Control
             TextRole.Caption,
             false,
             Fluent.TextTertiary,
-            new RectangleF(0, 2f * DpiScale, Width, S(18)),
+            new RectangleF(0, 2f * scale, Width, S(18)),
             StringAlignment.Near,
             StringTrimming.EllipsisCharacter,
-            DpiScale);
+            scale);
     }
 }
