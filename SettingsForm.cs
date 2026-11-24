@@ -689,6 +689,36 @@ internal sealed class SettingsForm : Form
                 StringTrimming.EllipsisCharacter,
                 scale);
         }
+
+        // 预设状态放在导航列表下方的空白区（两行，内容区保持干净）；没有预设就不画。
+        if (_savedPreset is { } preset)
+        {
+            var navTextLeft = 24f;
+            var navTextWidth = NavWidth - navTextLeft - 12f;
+            var statusTop = DesignHeight - FooterHeight - 52;
+
+            Fluent.Text(
+                g,
+                "有已保存的预设，时间：",
+                TextRole.Caption,
+                false,
+                Fluent.TextTertiary,
+                new RectangleF(S(navTextLeft), S(statusTop), S(navTextWidth), S(16)),
+                StringAlignment.Near,
+                StringTrimming.EllipsisCharacter,
+                scale);
+
+            Fluent.Text(
+                g,
+                $"{preset.SavedAt.LocalDateTime:yyyy-MM-dd HH:mm:ss}",
+                TextRole.Caption,
+                false,
+                Fluent.TextTertiary,
+                new RectangleF(S(navTextLeft), S(statusTop + 16), S(navTextWidth), S(16)),
+                StringAlignment.Near,
+                StringTrimming.EllipsisCharacter,
+                scale);
+        }
     }
 
     /// <summary>每个分区的卡片高度（设计像素）：16 内边距 + 各行高度。</summary>
@@ -779,32 +809,6 @@ internal sealed class SettingsForm : Form
                 false,
                 Fluent.TextTertiary,
                 new RectangleF(S(ContentX + 16), S(360), S(ContentWidth - 32), S(18)),
-                StringAlignment.Near,
-                StringTrimming.EllipsisCharacter,
-                scale);
-        }
-
-        // 预设状态：内容区底部常驻两行（替代原来的页脚提示），没有预设就不画。
-        if (_savedPreset is { } preset)
-        {
-            Fluent.Text(
-                g,
-                "有已保存的预设",
-                TextRole.Caption,
-                false,
-                Fluent.TextTertiary,
-                new RectangleF(S(ContentX + 16), S(520), S(ContentWidth - 32), S(18)),
-                StringAlignment.Near,
-                StringTrimming.EllipsisCharacter,
-                scale);
-
-            Fluent.Text(
-                g,
-                $"时间：{preset.SavedAt.LocalDateTime:yyyy-MM-dd HH:mm:ss}",
-                TextRole.Caption,
-                false,
-                Fluent.TextTertiary,
-                new RectangleF(S(ContentX + 16), S(536), S(ContentWidth - 32), S(18)),
                 StringAlignment.Near,
                 StringTrimming.EllipsisCharacter,
                 scale);
