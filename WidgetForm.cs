@@ -179,6 +179,9 @@ internal sealed class WidgetForm : Form
 
     public event Action? StartStopRequested;
     public event Action? OpenRequested;
+
+    /// <summary>点浮层顶部的地址（127.0.0.1:3080）：复制登录地址。</summary>
+    public event Action? CopyRequested;
     public event Action? LockRequested;
     public event Action? Moved;
     public event Action? StatusChanged;
@@ -1293,6 +1296,8 @@ internal sealed class WidgetForm : Form
                 StartStopRequested?.Invoke();
                 break;
             case "port":
+                CopyRequested?.Invoke();
+                break;
             case "open":
                 OpenRequested?.Invoke();
                 break;

@@ -19,31 +19,10 @@ internal sealed class ShellController : IDisposable
 
     public bool HasWindow => _shell is { IsDisposed: false };
 
-    /// <summary>没开就开；已隐藏就显示；可见时按 <see cref="WidgetConfig.ShellClose"/> 收起或关闭。</summary>
-    public void Toggle(string url)
-    {
-        if (_shell is { IsDisposed: false } shell)
-        {
-            if (shell.Visible)
-            {
-                shell.HideOrClose();
-                if (shell.CloseMode == ShellCloseMode.Close)
-                {
-                    _shell = null;
-                }
-
-                return;
-            }
-
-            shell.CloseMode = _config().ShellClose;
-            shell.ShowUrl(url);
-            return;
-        }
-
-        Create(url);
-    }
-
-    /// <summary>确保外壳可见（不切换、不隐藏）。</summary>
+    /// <summary>
+    /// 显示外壳：没窗口就新建；已有窗口就恢复（最小化则还原）并切到前台——
+    /// **不做「再点一次隐藏」**，也不改 TopMost（只前置，不置顶）。
+    /// </summary>
     public void Show(string url)
     {
         if (_shell is { IsDisposed: false } shell)

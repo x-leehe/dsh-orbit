@@ -73,8 +73,10 @@ internal sealed class WidgetApp : ApplicationContext
         // 令牌层必须在任何窗口创建前就绪（配色、字体都从它取）。
         Fluent.Init(_config.Theme);
 
-        _form = new WidgetForm(_config);        _form.StartStopRequested += () => _ = ToggleDshAsync();
+        _form = new WidgetForm(_config);
+        _form.StartStopRequested += () => _ = ToggleDshAsync();
         _form.OpenRequested += OpenWebUi;
+        _form.CopyRequested += CopyUrl;
         _form.LockRequested += ToggleLock;   // 窗口侧由「右键图标」触发，别删这条订阅
         _form.Moved += SavePosition;
         _form.DockStateChanged += SaveDock;
@@ -480,7 +482,7 @@ internal sealed class WidgetApp : ApplicationContext
 
         if (_config.UseWebShell && WebShell.IsRuntimeAvailable())
         {
-            _shells.Toggle(url);
+            _shells.Show(url);
             return;
         }
 
@@ -991,6 +993,7 @@ internal sealed class WidgetApp : ApplicationContext
             ToolTipIcon.Info);
     }
 
+    /// <summary>浮层顶部的地址被点击：复制登录地址（托盘里那一行已删掉，改由它承担）。</summary>
     private void CopyUrl()
     {
         if (_dsh.Port is not { } port)
@@ -1000,9 +1003,15 @@ internal sealed class WidgetApp : ApplicationContext
 
         try
         {
+            var login = _dsh.AuthenticatedUrl is not null || _dsh.RememberedUrl is not null;
             AuthLinks.TokenUrl = _dsh.AuthenticatedUrl ?? _dsh.RememberedUrl;
             var plain = $"http://127.0.0.1:{port}/";
             Clipboard.SetText(AuthLinks.For(plain));
+            _tray.ShowBalloonTip(
+                2000,
+                login ? "已复制登录地址" : "已复制地址",
+                login ? "带 token 的地址已复制到剪贴板" : "访问地址已复制到剪贴板",
+                ToolTipIcon.None);
         }
         catch
         {
