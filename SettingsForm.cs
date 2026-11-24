@@ -75,13 +75,12 @@ internal sealed class SettingsForm : Form
     /// <summary>「已应用 / 已载入」的那份基线；当前编辑态与它实质相同就置灰「应用」。</summary>
     private SettingsModel _baseline = new();
 
-    /// <summary>操作提示 3 秒后自动清掉，避免页脚常驻一行。</summary>
-    private readonly System.Windows.Forms.Timer _noticeTimer = new() { Interval = 3000 };
+    /// <summary>已保存的预设（没有就是 null）。内容区底部常驻显示它的时间，替代原来的页脚提示。</summary>
+    private SettingsPreset? _savedPreset;
 
     private int _section;
     private int _navHover = -1;
     private string _error = "";
-    private string _notice = "";
 
     public SettingsForm(
         SettingsModel model,
@@ -111,17 +110,12 @@ internal sealed class SettingsForm : Form
         BuildControls();
         BindModel(model, autoStart);
         _baseline = _model.Clone();
+        _savedPreset = SettingsPresetStore.Load();
         ApplyWindowSize();
         LayoutControls();
         ApplySectionVisibility();
         HookDirtyTracking();
         UpdateDirty();
-
-        _noticeTimer.Tick += (_, _) =>
-        {
-            _noticeTimer.Stop();
-            SetNotice("");
-        };
 
         Fluent.Changed += OnThemeChanged;
     }
@@ -390,15 +384,15 @@ internal sealed class SettingsForm : Form
         }
 
         SettingsPresetStore.Save(_model);
-        _restorePreset.Enabled = SettingsPresetStore.Exists();
+        _savedPreset = SettingsPresetStore.Load();
+        _restorePreset.Enabled = _savedPreset is not null;
         SetError("");
-        SetNotice("预设已保存");
     }
 
     /// <summary>「恢复预设」：把预设载入面板，点「确定 / 应用」才真正生效。</summary>
     private void RestorePreset()
     {
-        var preset = SettingsPresetStore.Load();
+        var preset = _savedPreset ?? SettingsPresetStore.Load();
         if (preset is null)
         {
             SetError("还没有保存过预设");
@@ -407,7 +401,6 @@ internal sealed class SettingsForm : Form
 
         BindModel(preset.Settings, (AutoStartMode)_autoStart.SelectedIndex);
         SetError("");
-        SetNotice($"已载入预设 · {preset.SavedAt.LocalDateTime:MM-dd HH:mm}");
         UpdateDirty();
     }
 
@@ -416,33 +409,12 @@ internal sealed class SettingsForm : Form
         var defaults = SettingsModel.Defaults();
         BindModel(defaults, (AutoStartMode)_autoStart.SelectedIndex);
         SetError("");
-        SetNotice("已恢复默认值");
         UpdateDirty();
     }
 
     private void SetError(string error)
     {
         _error = error;
-        if (!string.IsNullOrEmpty(error))
-        {
-            _notice = "";
-            _noticeTimer.Stop();
-        }
-
-        Invalidate();
-    }
-
-    private void SetNotice(string notice)
-    {
-        _notice = notice;
-        _noticeTimer.Stop();
-
-        if (!string.IsNullOrEmpty(notice))
-        {
-            _error = "";
-            _noticeTimer.Start();
-        }
-
         Invalidate();
     }
 
@@ -500,7 +472,7 @@ internal sealed class SettingsForm : Form
 
     private void BrowseFolder(SettingsField field)
     {
-        using var dialog = new FolderBrowserDialog { Description = "选择 dsh 的工作目录" };
+        using var dialog = new FolderBrowserDialog();
         if (dialog.ShowDialog(this) == DialogResult.OK)
         {
             field.Value = dialog.SelectedPath;
@@ -811,6 +783,32 @@ internal sealed class SettingsForm : Form
                 StringTrimming.EllipsisCharacter,
                 scale);
         }
+
+        // 预设状态：内容区底部常驻两行（替代原来的页脚提示），没有预设就不画。
+        if (_savedPreset is { } preset)
+        {
+            Fluent.Text(
+                g,
+                "有已保存的预设",
+                TextRole.Caption,
+                false,
+                Fluent.TextTertiary,
+                new RectangleF(S(ContentX + 16), S(520), S(ContentWidth - 32), S(18)),
+                StringAlignment.Near,
+                StringTrimming.EllipsisCharacter,
+                scale);
+
+            Fluent.Text(
+                g,
+                $"时间：{preset.SavedAt.LocalDateTime:yyyy-MM-dd HH:mm:ss}",
+                TextRole.Caption,
+                false,
+                Fluent.TextTertiary,
+                new RectangleF(S(ContentX + 16), S(536), S(ContentWidth - 32), S(18)),
+                StringAlignment.Near,
+                StringTrimming.EllipsisCharacter,
+                scale);
+        }
     }
 
     private void DrawFooter(Graphics g, float scale)
@@ -823,26 +821,13 @@ internal sealed class SettingsForm : Form
 
         if (!string.IsNullOrEmpty(_error))
         {
-            // 错误提示放在页脚分隔线下方、按钮上方的细条里（DSH 分区卡片到 564，不能往上挤）。
+            // 只留校验错误；普通操作提示不再占用页脚（预设信息放在内容区底部常驻）。
             Fluent.Text(
                 g,
                 _error,
                 TextRole.Caption,
                 false,
                 Fluent.Critical,
-                new RectangleF(S(24), S(top + 2), S(DesignWidth - 48), S(16)),
-                StringAlignment.Near,
-                StringTrimming.EllipsisCharacter,
-                scale);
-        }
-        else if (!string.IsNullOrEmpty(_notice))
-        {
-            Fluent.Text(
-                g,
-                _notice,
-                TextRole.Caption,
-                false,
-                Fluent.TextSecondary,
                 new RectangleF(S(24), S(top + 2), S(DesignWidth - 48), S(16)),
                 StringAlignment.Near,
                 StringTrimming.EllipsisCharacter,
@@ -961,7 +946,6 @@ internal sealed class SettingsForm : Form
         if (disposing)
         {
             Fluent.Changed -= OnThemeChanged;
-            _noticeTimer.Dispose();
         }
 
         base.Dispose(disposing);

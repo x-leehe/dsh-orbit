@@ -845,8 +845,7 @@ internal sealed class WidgetApp : ApplicationContext
             // 自动隐藏期间窗口是收着的，菜单行要显示「显示挂件」。
             Visible: _config.Visible && !_fullscreen.Hidden,
             ShellHide: _config.ShellClose == ShellCloseMode.Hide,
-            AutoStart: AutoStart.GetMode(),
-            HideInFullscreen: _config.HideInFullscreen);
+            AutoStart: AutoStart.GetMode());
 
         var menu = new TrayMenuForm(state, OnMenuCommand);
         _trayMenu = menu;

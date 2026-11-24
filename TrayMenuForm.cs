@@ -223,17 +223,6 @@ internal sealed class TrayMenuForm : Form
             ],
             (int)_state.AutoStart);
 
-        Fluent.SectionLabel(g, Scale(Plan.ThemeLabel), "外观", _scale);
-        DrawSegmented(
-            g,
-            Plan.ThemeSegments,
-            [
-                (MenuCommand.ThemeSystem, "跟随系统"),
-                (MenuCommand.ThemeLight, "浅色"),
-                (MenuCommand.ThemeDark, "深色"),
-            ],
-            (int)Fluent.Mode);
-
         Fluent.Divider(g, Flat(Plan.Divider2));
         DrawRows(g, Plan.Rows);
     }
@@ -561,25 +550,17 @@ internal sealed class TrayMenuForm : Form
     {
         0 => new RowData(MenuCommand.Lock, "lock", "锁定穿透", _state.Locked ? "开" : "关", null, true),
         1 => new RowData(MenuCommand.Edge, "panel-left", "贴边隐藏", _state.EdgeHideEnabled ? "开" : "关", null, true),
-        2 => new RowData(
-            MenuCommand.Fullscreen,
-            "app-window",
-            "全屏时隐藏",
-            _state.HideInFullscreen ? "开" : "关",
-            null,
-            true),
-        3 => new RowData(MenuCommand.Shell, "monitor", "外壳关闭时", _state.ShellHide ? "隐藏" : "关闭", null, true),
-        4 => new RowData(MenuCommand.Eye, "eye", _state.Visible ? "隐藏挂件" : "显示挂件", null, null, true),
-        5 => new RowData(
+        2 => new RowData(MenuCommand.Shell, "monitor", "外壳关闭时", _state.ShellHide ? "隐藏" : "关闭", null, true),
+        3 => new RowData(MenuCommand.Eye, "eye", _state.Visible ? "隐藏挂件" : "显示挂件", null, null, true),
+        4 => new RowData(
             MenuCommand.Copy,
             "copy",
             AuthLinks.HasAuthenticatedLink ? "复制登录地址" : "复制地址",
             null,
             null,
             _state.HasUrl),
-        6 => new RowData(MenuCommand.Logs, "file-text", "打开日志", null, null, true),
-        7 => new RowData(MenuCommand.Settings, "settings", "设置…", null, null, true),
-        8 => new RowData(MenuCommand.Exit, "power", "退出", null, Fluent.Critical, true),
+        5 => new RowData(MenuCommand.Settings, "settings", "设置…", null, null, true),
+        6 => new RowData(MenuCommand.Exit, "power", "退出", null, Fluent.Critical, true),
         _ => throw new ArgumentOutOfRangeException(nameof(index)),
     };
 
@@ -810,16 +791,11 @@ internal sealed class TrayMenuForm : Form
         var autoStartSegments = Box(Pad, y, width, SegmentHeight);
         y += SegmentHeight + Gap;
 
-        var themeLabel = Box(Pad, y, width, SectionHeight);
-        y += SectionHeight + Gap;
-        var themeSegments = Box(Pad, y, width, SegmentHeight);
-        y += SegmentHeight + Gap;
-
         var divider2 = Box(Pad, y, width, 1);
         y += 1 + Gap;
 
         // 菜单行贴齐卡片左右边：DrawMenuRow 自带 12px 内边距与 4px 悬停背板。
-        var rows = new RectangleF[9];
+        var rows = new RectangleF[7];
         for (var i = 0; i < rows.Length; i++)
         {
             rows[i] = Box(0, y, CardWidth, RowHeight);
@@ -835,8 +811,6 @@ internal sealed class TrayMenuForm : Form
             layoutSegments,
             autoStartLabel,
             autoStartSegments,
-            themeLabel,
-            themeSegments,
             divider2,
             rows,
             y);
@@ -850,8 +824,6 @@ internal sealed class TrayMenuForm : Form
         RectangleF LayoutSegments,
         RectangleF AutoStartLabel,
         RectangleF AutoStartSegments,
-        RectangleF ThemeLabel,
-        RectangleF ThemeSegments,
         RectangleF Divider2,
         RectangleF[] Rows,
         int CardHeight);
@@ -880,8 +852,7 @@ internal sealed record MenuState(
     bool EdgeHideEnabled,
     bool Visible,
     bool ShellHide,
-    AutoStartMode AutoStart,
-    bool HideInFullscreen = true)
+    AutoStartMode AutoStart)
 {
     public bool LayoutNormal => !LayoutBottom && !LayoutTop;
 }
