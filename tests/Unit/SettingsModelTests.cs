@@ -234,4 +234,42 @@ public class SettingsModelTests
         model.WorkingDirectory = Path.GetTempPath();
         Assert.True(model.TryValidate(out _));
     }
+
+    [Fact]
+    public void SameAs_IgnoresTrailingWhitespaceAndTinyOpacityDrift()
+    {
+        var left = SettingsModel.Defaults();
+        left.Profile = "web";
+        left.Opacity = 0.8;
+        left.DeepSeekApiKey = "sk-test";
+
+        var right = left.Clone();
+        right.Profile = "web  ";
+        right.Opacity = 0.80004;
+        right.DeepSeekApiKey = " sk-test";
+
+        Assert.True(left.SameAs(right));
+    }
+
+    [Fact]
+    public void SameAs_DetectsSubstantiveChange()
+    {
+        var baseline = SettingsModel.Defaults();
+        var changed = baseline.Clone();
+
+        changed.ShowBalance = !changed.ShowBalance;
+        Assert.False(baseline.SameAs(changed));
+
+        changed = baseline.Clone();
+        changed.PreferredPort += 1;
+        Assert.False(baseline.SameAs(changed));
+
+        changed = baseline.Clone();
+        changed.Opacity = 0.75;
+        Assert.False(baseline.SameAs(changed));
+
+        changed = baseline.Clone();
+        changed.Profile = "another";
+        Assert.False(baseline.SameAs(changed));
+    }
 }

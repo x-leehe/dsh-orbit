@@ -37,6 +37,38 @@ internal sealed class SettingsModel
     /// <summary>面板默认值（与 <see cref="WidgetConfig"/> 的初始值一致）。</summary>
     public static SettingsModel Defaults() => new();
 
+    /// <summary>浅拷贝（字段都是值类型 / 不可变字符串）。用于记录「已应用」的基线。</summary>
+    public SettingsModel Clone() => (SettingsModel)MemberwiseClone();
+
+    /// <summary>
+    /// 是否与另一份编辑态「实质相同」。文本按 Trim 比较（路径末尾空格不算改动），
+    /// 不透明度按 0.0001 容差；用于「应用」按钮置灰。
+    /// </summary>
+    public bool SameAs(SettingsModel other) =>
+        Theme == other.Theme
+        && Math.Abs(Opacity - other.Opacity) < 0.0001
+        && AlwaysBottom == other.AlwaysBottom
+        && AlwaysOnTop == other.AlwaysOnTop
+        && EdgeHideEnabled == other.EdgeHideEnabled
+        && ClickThrough == other.ClickThrough
+        && HideInFullscreen == other.HideInFullscreen
+        && Visible == other.Visible
+        && ShellClose == other.ShellClose
+        && UseWebShell == other.UseWebShell
+        && ShowBalance == other.ShowBalance
+        && PreferredPort == other.PreferredPort
+        && StatusIntervalSeconds == other.StatusIntervalSeconds
+        && BalanceIntervalSeconds == other.BalanceIntervalSeconds
+        && PluginIntervalSeconds == other.PluginIntervalSeconds
+        && SameText(Profile, other.Profile)
+        && SameText(DshExePath, other.DshExePath)
+        && SameText(WorkingDirectory, other.WorkingDirectory)
+        && SameText(LaunchArguments, other.LaunchArguments)
+        && SameText(DeepSeekApiKey, other.DeepSeekApiKey);
+
+    private static bool SameText(string left, string right) =>
+        string.Equals(left.Trim(), right.Trim(), StringComparison.Ordinal);
+
     public static SettingsModel From(WidgetConfig config) => new()
     {
         Theme = config.Theme,

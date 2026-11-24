@@ -613,6 +613,7 @@ internal sealed class SettingsField : Control
 
         _browse.Visible = false;
         _browse.Click += (_, _) => BrowseRequested?.Invoke(this, EventArgs.Empty);
+        _input.ValueChanged += (_, _) => ValueChanged?.Invoke(this, EventArgs.Empty);
 
         Controls.Add(_input);
         Controls.Add(_browse);
@@ -659,6 +660,9 @@ internal sealed class SettingsField : Control
     }
 
     public event EventHandler? BrowseRequested;
+
+    /// <summary>输入内容变化（转给设置面板做脏检查）。</summary>
+    public event EventHandler? ValueChanged;
 
     public void FocusInput() => _input.FocusInput();
 

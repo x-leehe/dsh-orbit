@@ -144,6 +144,7 @@ internal sealed class FluentTextBox : Control
 
         _inner.GotFocus += (_, _) => Invalidate();
         _inner.LostFocus += (_, _) => Invalidate();
+        _inner.TextChanged += (_, _) => ValueChanged?.Invoke(this, EventArgs.Empty);
 
         Controls.Add(_inner);
         Height = 32;
@@ -174,6 +175,9 @@ internal sealed class FluentTextBox : Control
     }
 
     public void FocusInput() => _inner.Focus();
+
+    /// <summary>输入内容变化（设置面板用它做「应用」按钮的脏检查）。</summary>
+    public event EventHandler? ValueChanged;
 
     private void OnThemeChanged()
     {

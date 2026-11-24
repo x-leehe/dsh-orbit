@@ -24,13 +24,14 @@ internal sealed class SettingsForm : Form
     private const int ContentWidth = 412;
     private const int FooterHeight = 64;
 
+    // 分区只留标题：说明性文字（「点确定/应用后生效」之类）已按反馈去掉。
     private static readonly (string Title, string Description)[] SectionInfo =
     [
-        ("外观", "主题与挂件不透明度，点「确定」或「应用」后立即生效。"),
-        ("挂件", "层级、贴边与全屏行为；贴边隐藏与点击穿透互斥。"),
-        ("启动", "开机启动方式；启动参数与工作目录影响下一次拉起 dsh。"),
-        ("DSH", "Profile、端口与本地 dsh；路径类改动下次启动生效。"),
-        ("数据", "余额与刷新频率；API Key 留空时读环境变量或 ~\\.dsh\\.credentials.yaml。"),
+        ("外观", ""),
+        ("挂件", ""),
+        ("启动", ""),
+        ("DSH", ""),
+        ("数据", ""),
     ];
 
     private readonly SettingsModel _model;
@@ -71,6 +72,12 @@ internal sealed class SettingsForm : Form
     private readonly FluentButton _close = new();
     private readonly List<Control[]> _sectionControls = new();
 
+    /// <summary>「已应用 / 已载入」的那份基线；当前编辑态与它实质相同就置灰「应用」。</summary>
+    private SettingsModel _baseline = new();
+
+    /// <summary>操作提示 3 秒后自动清掉，避免页脚常驻一行。</summary>
+    private readonly System.Windows.Forms.Timer _noticeTimer = new() { Interval = 3000 };
+
     private int _section;
     private int _navHover = -1;
     private string _error = "";
@@ -103,9 +110,18 @@ internal sealed class SettingsForm : Form
 
         BuildControls();
         BindModel(model, autoStart);
+        _baseline = _model.Clone();
         ApplyWindowSize();
         LayoutControls();
         ApplySectionVisibility();
+        HookDirtyTracking();
+        UpdateDirty();
+
+        _noticeTimer.Tick += (_, _) =>
+        {
+            _noticeTimer.Stop();
+            SetNotice("");
+        };
 
         Fluent.Changed += OnThemeChanged;
     }
@@ -166,7 +182,7 @@ internal sealed class SettingsForm : Form
         _shellClose.Labels = ["隐藏", "关闭"];
 
         _showBalance.Label = "显示余额";
-        _showBalance.Description = "关闭后不请求余额接口，浮层与托盘不显示余额 / 今日已用（峰谷仍显示）";
+        _showBalance.Description = "浮层与托盘不显示余额和今日已用";
 
         _apiKey.Label = "DeepSeek API Key（留空自动查找）";
         _apiKey.Placeholder = "sk-…";
@@ -327,8 +343,11 @@ internal sealed class SettingsForm : Form
         }
 
         _onSave(_model, (AutoStartMode)_autoStart.SelectedIndex);
+
+        // 应用后基线前移：没再改东西「应用」立刻回到置灰。
+        _baseline = _model.Clone();
         SetError("");
-        SetNotice("已应用");
+        UpdateDirty();
 
         if (close)
         {
@@ -367,7 +386,7 @@ internal sealed class SettingsForm : Form
         SettingsPresetStore.Save(_model);
         _restorePreset.Enabled = SettingsPresetStore.Exists();
         SetError("");
-        SetNotice("预设已保存（恢复预设 可随时载回）");
+        SetNotice("预设已保存");
     }
 
     /// <summary>「恢复预设」：把预设载入面板，点「确定 / 应用」才真正生效。</summary>
@@ -382,7 +401,8 @@ internal sealed class SettingsForm : Form
 
         BindModel(preset.Settings, (AutoStartMode)_autoStart.SelectedIndex);
         SetError("");
-        SetNotice($"已载入预设（{preset.SavedAt.LocalDateTime:MM-dd HH:mm}），点「确定」或「应用」生效");
+        SetNotice($"已载入预设 · {preset.SavedAt.LocalDateTime:MM-dd HH:mm}");
+        UpdateDirty();
     }
 
     private void ResetToDefaults()
@@ -390,7 +410,8 @@ internal sealed class SettingsForm : Form
         var defaults = SettingsModel.Defaults();
         BindModel(defaults, (AutoStartMode)_autoStart.SelectedIndex);
         SetError("");
-        SetNotice("已恢复默认值，点「确定」或「应用」生效");
+        SetNotice("已恢复默认值");
+        UpdateDirty();
     }
 
     private void SetError(string error)
@@ -399,6 +420,7 @@ internal sealed class SettingsForm : Form
         if (!string.IsNullOrEmpty(error))
         {
             _notice = "";
+            _noticeTimer.Stop();
         }
 
         Invalidate();
@@ -407,12 +429,50 @@ internal sealed class SettingsForm : Form
     private void SetNotice(string notice)
     {
         _notice = notice;
+        _noticeTimer.Stop();
+
         if (!string.IsNullOrEmpty(notice))
         {
             _error = "";
+            _noticeTimer.Start();
         }
 
         Invalidate();
+    }
+
+    /// <summary>所有编辑控件的内容变化 → 重算「应用」按钮是否可用。</summary>
+    private void HookDirtyTracking()
+    {
+        foreach (var group in _sectionControls)
+        {
+            foreach (var control in group)
+            {
+                switch (control)
+                {
+                    case SettingsToggle toggle:
+                        toggle.CheckedChanged += (_, _) => UpdateDirty();
+                        break;
+                    case SettingsSegmented segmented:
+                        segmented.SelectionChanged += (_, _) => UpdateDirty();
+                        break;
+                    case SettingsSlider slider:
+                        slider.ValueChanged += (_, _) => UpdateDirty();
+                        break;
+                    case SettingsField field:
+                        field.ValueChanged += (_, _) => UpdateDirty();
+                        break;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// 「应用」只在实质改动时可用：收集当前编辑态与基线比较；
+    /// 收集失败（例如端口不是数字）也算有改动，好让用户点进去看到校验错误。
+    /// </summary>
+    private void UpdateDirty()
+    {
+        _apply.Enabled = !TryCollect(out _) || !_model.SameAs(_baseline);
     }
 
     // ---------------------------------------------------------------- 浏览对话框
@@ -492,36 +552,36 @@ internal sealed class SettingsForm : Form
     private void LayoutControls()
     {
         // 卡片内边距 16；行高固定：开关 / 分段 / 滑杆 64，文本字段 76。
-        // 坐标全部是「设计像素」，由 InCard 统一乘 DPI。
-        _theme.Bounds = InCard(128, 64);
-        _opacity.Bounds = InCard(192, 64);
+        // 坐标全部是「设计像素」，由 InCard 统一乘 DPI。分区说明已删除，卡片整体上移 16。
+        _theme.Bounds = InCard(112, 64);
+        _opacity.Bounds = InCard(176, 64);
 
-        _layout.Bounds = InCard(128, 64);
-        _edge.Bounds = InCard(192, 64);
-        _clickThrough.Bounds = InCard(256, 64);
-        _hideFullscreen.Bounds = InCard(320, 64);
-        _visible.Bounds = InCard(384, 64);
+        _layout.Bounds = InCard(112, 64);
+        _edge.Bounds = InCard(176, 64);
+        _clickThrough.Bounds = InCard(240, 64);
+        _hideFullscreen.Bounds = InCard(304, 64);
+        _visible.Bounds = InCard(368, 64);
 
-        _autoStart.Bounds = InCard(128, 64);
-        _launchArgs.Bounds = InCard(192, 76);
-        _workDir.Bounds = InCard(268, 76);
+        _autoStart.Bounds = InCard(112, 64);
+        _launchArgs.Bounds = InCard(176, 76);
+        _workDir.Bounds = InCard(252, 76);
 
-        _profile.Bounds = InCard(128, 76);
-        _port.Bounds = InCard(204, 76);
-        _dshPath.Bounds = InCard(280, 76);
-        _useShell.Bounds = InCard(356, 64);
-        _shellClose.Bounds = InCard(420, 64);
-        _showBalance.Bounds = InCard(484, 64);
+        _profile.Bounds = InCard(112, 76);
+        _port.Bounds = InCard(188, 76);
+        _dshPath.Bounds = InCard(264, 76);
+        _useShell.Bounds = InCard(340, 64);
+        _shellClose.Bounds = InCard(404, 64);
+        _showBalance.Bounds = InCard(468, 64);
 
-        _apiKey.Bounds = InCard(128, 76);
+        _apiKey.Bounds = InCard(112, 76);
 
         var intervalWidth = (ContentWidth - 32 - 16) / 3;
-        _statusInterval.Bounds = new Rectangle(S(ContentX + 16), S(232), S(intervalWidth), S(76));
-        _balanceInterval.Bounds = new Rectangle(S(ContentX + 16 + intervalWidth + 8), S(232), S(intervalWidth), S(76));
-        _pluginInterval.Bounds = new Rectangle(S(ContentX + 16 + ((intervalWidth + 8) * 2)), S(232), S(intervalWidth), S(76));
-        _copy.Bounds = new Rectangle(S(ContentX + 16), S(320), S(96), S(32));
-        _logs.Bounds = new Rectangle(S(ContentX + 16 + 104), S(320), S(96), S(32));
-        _clearLogs.Bounds = new Rectangle(S(ContentX + 16 + 208), S(320), S(96), S(32));
+        _statusInterval.Bounds = new Rectangle(S(ContentX + 16), S(216), S(intervalWidth), S(76));
+        _balanceInterval.Bounds = new Rectangle(S(ContentX + 16 + intervalWidth + 8), S(216), S(intervalWidth), S(76));
+        _pluginInterval.Bounds = new Rectangle(S(ContentX + 16 + ((intervalWidth + 8) * 2)), S(216), S(intervalWidth), S(76));
+        _copy.Bounds = new Rectangle(S(ContentX + 16), S(304), S(96), S(32));
+        _logs.Bounds = new Rectangle(S(ContentX + 16 + 104), S(304), S(96), S(32));
+        _clearLogs.Bounds = new Rectangle(S(ContentX + 16 + 208), S(304), S(96), S(32));
 
         // 页脚
         var footerTop = DesignHeight - FooterHeight;
@@ -667,11 +727,11 @@ internal sealed class SettingsForm : Form
     /// <summary>卡片内的行分隔线（设计 y）。</summary>
     private static int[] CardDividers(int section) => section switch
     {
-        0 => [192],
-        1 => [192, 256, 320, 384],
-        2 => [192, 268],
-        3 => [204, 280, 356, 420, 484],
-        4 => [226, 308],
+        0 => [176],
+        1 => [176, 240, 304, 368],
+        2 => [176, 252],
+        3 => [188, 264, 340, 404, 468],
+        4 => [210, 292],
         _ => [],
     };
 
@@ -685,26 +745,29 @@ internal sealed class SettingsForm : Form
             TextRole.Subtitle,
             true,
             Fluent.TextPrimary,
-            new RectangleF(S(ContentX), S(58), S(ContentWidth), S(30)),
+            new RectangleF(S(ContentX), S(52), S(ContentWidth), S(30)),
             StringAlignment.Near,
             StringTrimming.None,
             scale);
 
-        Fluent.Text(
-            g,
-            info.Description,
-            TextRole.Caption,
-            false,
-            Fluent.TextTertiary,
-            new RectangleF(S(ContentX), S(90), S(ContentWidth), S(20)),
-            StringAlignment.Near,
-            StringTrimming.EllipsisCharacter,
-            scale);
+        if (!string.IsNullOrEmpty(info.Description))
+        {
+            Fluent.Text(
+                g,
+                info.Description,
+                TextRole.Caption,
+                false,
+                Fluent.TextTertiary,
+                new RectangleF(S(ContentX), S(84), S(ContentWidth), S(20)),
+                StringAlignment.Near,
+                StringTrimming.EllipsisCharacter,
+                scale);
+        }
 
         // 设置分组 = 一张 WinUI 卡片（8 圆角、Layer 底、上亮下暗描边），行间用 inset 分隔线。
         Fluent.Card(
             g,
-            new RectangleF(S(ContentX), S(112), S(ContentWidth), S(CardHeight(_section))),
+            new RectangleF(S(ContentX), S(96), S(ContentWidth), S(CardHeight(_section))),
             Sf(Fluent.RCard),
             0,
             Fluent.Layer);
@@ -716,7 +779,7 @@ internal sealed class SettingsForm : Form
                 new RectangleF(S(ContentX + 16), S(y), S(ContentWidth - 32), MathF.Max(1f, scale)));
         }
 
-        // 数据分区：API Key 的来源提示 + 三个间隔的说明
+        // 数据分区：API Key 的来源提示 + 延迟生效的约束
         if (_section == 4)
         {
             Fluent.Text(
@@ -725,18 +788,18 @@ internal sealed class SettingsForm : Form
                 TextRole.Caption,
                 false,
                 Fluent.TextTertiary,
-                new RectangleF(S(ContentX + 16), S(206), S(ContentWidth - 32), S(18)),
+                new RectangleF(S(ContentX + 16), S(190), S(ContentWidth - 32), S(18)),
                 StringAlignment.Near,
                 StringTrimming.EllipsisCharacter,
                 scale);
 
             Fluent.Text(
                 g,
-                "间隔改动保存后立即重新计时；路径 / 端口 / Profile 下次启动生效。",
+                "路径、端口与 Profile 在下次启动生效。",
                 TextRole.Caption,
                 false,
                 Fluent.TextTertiary,
-                new RectangleF(S(ContentX + 16), S(384), S(ContentWidth - 32), S(18)),
+                new RectangleF(S(ContentX + 16), S(368), S(ContentWidth - 32), S(18)),
                 StringAlignment.Near,
                 StringTrimming.EllipsisCharacter,
                 scale);
@@ -891,6 +954,7 @@ internal sealed class SettingsForm : Form
         if (disposing)
         {
             Fluent.Changed -= OnThemeChanged;
+            _noticeTimer.Dispose();
         }
 
         base.Dispose(disposing);
